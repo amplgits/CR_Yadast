@@ -524,6 +524,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <script>
 /* ============================================================
@@ -535,6 +536,15 @@ nav.bottomnav a.active{color:var(--brand-2);}
 const CONFIG = {
   apiUrl: "https://script.google.com/macros/s/AKfycbwGpQx2eG-CaMUmBllm1vR2PzOGbszb9umcSPo9T1SZmT4813tr9mhXsoXDpdI0kSfd3Q/exec", // ends in /exec
 };
+
+const DOC_TYPES = [
+  "Passport Size Photo (2 copies)", "Record of Rights", "Land Revenue Receipt", "Sale Deed (If any)",
+  "PAN Card", "Voter Card", "Aaadhar Card", "Death and Legal Hair Certificate ( wherever required)",
+  "Affidavit Before Executive Magistrate (If there is any discrepancy in the name or surname.)",
+  "Bank Passbook", "Bank Mandate Form (Annexure II)",
+  "Affidavit before the Executive Magistrate regarding receipt of compensation amount for jointly owned land",
+  "Revenue Ticket (5 nos)", "\u20B920/- Bond Paper", "Encumbrance Certificate", "Any other documents, wherever required"
+];
 
 /* ============================================================
    STATE
@@ -552,6 +562,7 @@ const STATE = {
   currentRoute: { name: "dashboard", params: {} },
   charts: {},
   khataStatusFilter: "all",
+  khataDocFilter: "all",
 };
 
 /* ============================================================
@@ -566,7 +577,7 @@ function escapeHtml(str) {
   });
 }
 
-function fmtAcres(n) { return (n == null || isNaN(n)) ? "&mdash;" : Number(n).toFixed(2) + " ac"; }
+function fmtAcres(n) { return (n == null || isNaN(n)) ? "&mdash;" : Number(n).toFixed(2) + " Acre"; }
 
 function fmtINR(n) {
   if (n == null || isNaN(n)) return "&mdash;";
@@ -828,7 +839,7 @@ const UI = {
       portalLabel.textContent = "ADMIN CONTROL CENTER";
       $("#btnAdminLogin").classList.add("hidden"); $("#btnAdminLogout").classList.remove("hidden");
     } else {
-      pill.textContent = "Guest"; pill.className = "role-pill user";
+      pill.textContent = "User"; pill.className = "role-pill user";
       portalLabel.textContent = "PUBLIC PORTAL";
       $("#btnAdminLogin").classList.remove("hidden"); $("#btnAdminLogout").classList.add("hidden");
     }
@@ -899,7 +910,10 @@ PAGES.dashboard = function () {
     { icon: "icon-users", label: "RT records", value: k.totalRTs || 0, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
     { icon: "icon-image", label: "Documents", value: k.totalDocuments || 0, grad: "linear-gradient(135deg,#D97706,#F59E0B)" },
   ];
-  if (STATE.isAdmin) kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" });
+  if (STATE.isAdmin) {
+    kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" });
+    kpis.push({ icon: "icon-check-circle", label: "Documentation Completed", value: PAGES.filterKhatasByDoc(DATA.khataList(), "complete").length, grad: "linear-gradient(135deg,#059669,#10B981)" });
+  }
 
   const blockIds = Object.keys(STATE.blocks);
   return (
@@ -948,6 +962,25 @@ PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount) {
     "</div>";
 };
 
+PAGES.isDocComplete = function (khataId) {
+  return DATA.documentsForKhata(khataId).length > 0;
+};
+
+PAGES.filterKhatasByDoc = function (khatas, filter) {
+  if (filter === "complete") return khatas.filter(function (k) { return PAGES.isDocComplete(k.id); });
+  if (filter === "incomplete") return khatas.filter(function (k) { return !PAGES.isDocComplete(k.id); });
+  return khatas;
+};
+
+PAGES.docFilterTabsHtml = function (allCount, completeCount, incompleteCount) {
+  const f = STATE.khataDocFilter;
+  return '<div class="tabs mt-8">' +
+    '<button class="tab-btn' + (f === "all" ? " active" : "") + '" data-doc-filter="all">All docs <span class="muted">' + allCount + "</span></button>" +
+    '<button class="tab-btn' + (f === "complete" ? " active" : "") + '" data-doc-filter="complete">Documentation Completed <span class="muted">' + completeCount + "</span></button>" +
+    '<button class="tab-btn' + (f === "incomplete" ? " active" : "") + '" data-doc-filter="incomplete">Documentation Incomplete <span class="muted">' + incompleteCount + "</span></button>" +
+    "</div>";
+};
+
 PAGES.khataCardsHtml = function (khatas, opts) {
   opts = opts || {};
   if (!khatas.length) return emptyState("icon-file-search", "No Khata records found", opts.emptyMsg || "We couldn't find any Khata matching your search.");
@@ -960,6 +993,14 @@ PAGES.khataCardsHtml = function (khatas, opts) {
   }).join("") + "</div>";
 };
 
+PAGES.documentCompletionCounts = function () {
+  let complete = 0, pending = 0;
+  DATA.khataList().forEach(function (k) {
+    if (PAGES.isDocComplete(k.id)) complete++; else pending++;
+  });
+  return { complete: complete, pending: pending };
+};
+
 PAGES.blockDetail = function (blockId) {
   if (!STATE.loaded) return skeletonCards(4);
   const block = STATE.blocks[blockId];
@@ -967,12 +1008,15 @@ PAGES.blockDetail = function (blockId) {
   const khatas = DATA.khatasForBlock(blockId);
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
-  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
+  const docCompleteCount = PAGES.filterKhatasByDoc(khatas, "complete").length;
+  const docIncompleteCount = PAGES.filterKhatasByDoc(khatas, "incomplete").length;
+  const filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
   const loc = block.location || {};
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks">Blocks</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(block.blockName) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(block.blockName) + "</h1><p>" + escapeHtml(block.blockCode || "") + " &middot; " + escapeHtml(loc.village || "") + ", " + escapeHtml(loc.district || "") + "</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.docFilterTabsHtml(khatas.length, docCompleteCount, docIncompleteCount) +
     '<div class="section-title">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
@@ -986,11 +1030,14 @@ PAGES.khatasList = function () {
   }
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
-  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
+  const docCompleteCount = PAGES.filterKhatasByDoc(khatas, "complete").length;
+  const docIncompleteCount = PAGES.filterKhatasByDoc(khatas, "incomplete").length;
+  const filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
     '<div class="page-head"><div><h1>All Khata records</h1><p>' + khatas.length + " record(s) across every block.</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.docFilterTabsHtml(khatas.length, docCompleteCount, docIncompleteCount) +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
@@ -1000,6 +1047,12 @@ PAGES.afterEntityGrid = function () {
   $all("[data-status-filter]").forEach(function (el) {
     el.addEventListener("click", function () {
       STATE.khataStatusFilter = el.getAttribute("data-status-filter");
+      Router.render();
+    });
+  });
+  $all("[data-doc-filter]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      STATE.khataDocFilter = el.getAttribute("data-doc-filter");
       Router.render();
     });
   });
@@ -1031,11 +1084,11 @@ PAGES.khataDetail = function (khataId) {
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
     PAGES.defItem("RT name", k.rtName) + PAGES.defItem("RT ID", k.rtId) + PAGES.defItem("Khata number", k.khataNumber) +
-    PAGES.defItem("Village", loc.village) + PAGES.defItem("Mouza", loc.mouza) + PAGES.defItem("GP", loc.gp) +
+    PAGES.defItem("Village", loc.village) +
     PAGES.defItem("Block", block.blockName) + PAGES.defItem("District", loc.district) + PAGES.defItem("Status", status) +
+    PAGES.defItem("Documentation", PAGES.isDocComplete(khataId) ? "Completed" : "Incomplete") +
     "</div></div><div class=\"card\"><div class=\"section-title\">Land</div><div class=\"deflist\">" +
-    PAGES.defItem("Total land", fmtAcres(land.totalLandAcres)) + PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) +
-    PAGES.defItem("Remaining land", fmtAcres(land.remainingLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
+    PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
     "</div></div></div>" +
 
     '<div class="tabpanel" data-panel="structures"><div class="card"><div class="section-title">Structures <span class="muted">' + structures.length + ' record(s)</span></div>' +
@@ -1080,8 +1133,23 @@ PAGES.compensationTabHtml = function (khataId) {
    as their base64 image data arrives (fetched on demand - the
    bootstrap payload never carries image bytes).
    ============================================================ */
-PAGES.documentsTabHtml = function (khataId, docs) {
+PAGES.documentChecklistHtml = function (khataId, docs) {
+  const uploadedTypes = {};
+  docs.forEach(function (d) { uploadedTypes[d.documentType] = true; });
+  const completedCount = DOC_TYPES.filter(function (t) { return uploadedTypes[t]; }).length;
+  const isComplete = docs.length > 0;
+  const items = DOC_TYPES.map(function (t) {
+    const done = !!uploadedTypes[t];
+    return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(t) + "</div></div><span class=\"badge " + (done ? "badge-green" : "badge-amber") + '"><i class="' + (done ? "icon-check" : "icon-circle-alert") + ' i"></i> ' + (done ? "Uploaded" : "Pending") + "</span></div>";
+  }).join("");
+  return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + completedCount + "/" + DOC_TYPES.length + ' complete</span></div>' + items +
+    (isComplete ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
+    "</div>";
+};
+
+   PAGES.documentsTabHtml = function (khataId, docs) {
   return (
+    PAGES.documentChecklistHtml(khataId, docs) +
     '<div class="card mb-16"><div class="section-title">Upload a document</div>' +
     '<div class="dropzone" id="dropzone"><i class="icon-cloud-upload i"></i>' +
     '<div style="font-weight:700;margin-top:8px;">Add RT, land or ID documents, or structure/tree photos</div>' +
@@ -1091,7 +1159,7 @@ PAGES.documentsTabHtml = function (khataId, docs) {
     '<label class="btn btn-ghost btn-sm"><i class="icon-camera i"></i><span>Use camera</span><input type="file" accept="image/*" capture="environment" id="fileInputCamera" style="display:none;"></label>' +
     '</div><div class="upload-row" id="uploadProgressRow"></div>' +
     '<div class="field mt-16" style="max-width:260px;margin:16px auto 0;text-align:left;"><label>Document type</label>' +
-    '<select id="uploadDocType"><option>Passport Size Photo (2 copies)</option><option>Record of Rights</option><option>Land Revenue Receipt</option><option>Sale Deed (If any)</option><option>PAN Card</option><option>Voter Card</option><option>Aaadhar Card</option><option>Death and Legal Hair Certificate ( wherever required)</option><option>Affidavit Before Executive Magistrate (If there is any discrepancy in the name or surname.)</option><option>Bank Passbook</option><option>Bank Mandate Form (Annexure II)</option><option>Affidavit before the Executive Magistrate regarding receipt of compensation amount for jointly owned land</option><option>Revenue Ticket (5 nos)</option><option>₹20/- Bond Paper</option><option>Encumbrance Certificate</option><option>Any other documents, wherever required</option></select></div>' +
+    '<select id="uploadDocType">' + DOC_TYPES.map(function (t) { return "<option>" + escapeHtml(t) + "</option>"; }).join("") + '</select></div>' +
     "</div></div>" +
 
     '<div class="card"><div class="section-title">Uploaded documents <span class="muted">' + docs.length + " file(s)</span></div>" +
@@ -1168,6 +1236,45 @@ const UPLOAD = {
           .then(function () { Router.render(); })
           .catch(function (err) { showToast(err.message || "Delete failed", "error"); });
       });
+  },
+};
+
+/* ============================================================
+   ZIP DOWNLOAD — bundles every document image for a khata into
+   one .zip, fetching each full image on demand first.
+   ============================================================ */
+const ZIPDOWNLOAD = {
+  downloadAll: function (khataId, btn) {
+    const docs = DATA.documentsForKhata(khataId);
+    if (!docs.length) { showToast("No documents to download.", "error"); return; }
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Preparing ZIP&hellip;</span>';
+
+    const zip = new JSZip();
+    const khata = STATE.khatas[khataId] || {};
+    const folderName = (khata.khataNumber || khataId) + "";
+
+    Promise.all(docs.map(function (d) {
+      return DATA.getDocumentImage(d.id).then(function (dataUrl) {
+        const base64 = dataUrl.split(",")[1];
+        const ext = (dataUrl.match(/data:image\/(\w+);/) || [, "jpg"])[1];
+        const safeName = d.documentType.replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+        zip.file(folderName + "/" + safeName + "_" + d.id.slice(0, 6) + "." + ext, base64, { base64: true });
+      });
+    })).then(function () {
+      return zip.generateAsync({ type: "blob" });
+    }).then(function (blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "Khata_" + folderName + "_Documents.zip";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast("ZIP downloaded.", "success");
+    }).catch(function (err) {
+      console.error(err); showToast("Could not build the ZIP file.", "error");
+    }).finally(function () {
+      btn.disabled = false; btn.innerHTML = originalHtml;
+    });
   },
 };
 
@@ -1337,6 +1444,9 @@ PAGES.afterKhataDetail = function (khataId) {
 
   const editBtn = $("#btnEditComp");
   if (editBtn) editBtn.addEventListener("click", function () { CompModal.open(khataId); });
+
+  const downloadAllBtn = $("#btnDownloadAllDocs");
+  if (downloadAllBtn) downloadAllBtn.addEventListener("click", function () { ZIPDOWNLOAD.downloadAll(khataId, downloadAllBtn); });
 };
 
 /* ============================================================
@@ -1422,6 +1532,7 @@ PAGES.adminAnalytics = function () {
     '<div class="chart-card"><div class="section-title">Compensation by block</div><canvas id="chartCompByBlock"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Land category distribution</div><canvas id="chartLandCat"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Compensation status</div><canvas id="chartStatus"></canvas></div>' +
+    '<div class="chart-card"><div class="section-title">Documentation status</div><canvas id="chartDocStatus"></canvas></div>' +
     "</div>"
   );
 };
@@ -1461,6 +1572,12 @@ PAGES.afterAdminAnalytics = function () {
   if (ctx4 && Object.keys(statusCounts).length) {
     STATE.charts.status = new Chart(ctx4, { type: "pie", data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: palette }] }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 11 } } } } } });
   } else if (ctx4) { ctx4.parentElement.innerHTML = emptyState("icon-pie-chart", "No compensation records yet", "Status breakdown will appear once compensation data exists."); }
+
+  const docCounts = PAGES.documentCompletionCounts();
+  const ctx5 = $("#chartDocStatus");
+  if (ctx5 && (docCounts.complete + docCounts.pending) > 0) {
+    STATE.charts.docStatus = new Chart(ctx5, { type: "doughnut", data: { labels: ["Fully documented", "Pending documents"], datasets: [{ data: [docCounts.complete, docCounts.pending], backgroundColor: ["#10B981", "#F59E0B"] }] }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 11 } } } } } });
+  } else if (ctx5) { ctx5.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Documentation status will appear here once khatas are added."); }
 };
 
 /* ============================================================
