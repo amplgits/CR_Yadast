@@ -551,6 +551,7 @@ const STATE = {
   loaded: false,
   currentRoute: { name: "dashboard", params: {} },
   charts: {},
+  khataStatusFilter: "all",
 };
 
 /* ============================================================
@@ -932,6 +933,21 @@ PAGES.blocksList = function () {
   );
 };
 
+PAGES.filterKhatasByStatus = function (khatas, filter) {
+  if (filter === "blocked") return khatas.filter(function (k) { return /blocked/i.test((k.metadata || {}).status || ""); });
+  if (filter === "approved") return khatas.filter(function (k) { return !/blocked/i.test((k.metadata || {}).status || ""); });
+  return khatas;
+};
+
+PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount) {
+  const f = STATE.khataStatusFilter;
+  return '<div class="tabs">' +
+    '<button class="tab-btn' + (f === "all" ? " active" : "") + '" data-status-filter="all">All <span class="muted">' + allCount + "</span></button>" +
+    '<button class="tab-btn' + (f === "approved" ? " active" : "") + '" data-status-filter="approved">CR Approved <span class="muted">' + approvedCount + "</span></button>" +
+    '<button class="tab-btn' + (f === "blocked" ? " active" : "") + '" data-status-filter="blocked">Blocked <span class="muted">' + blockedCount + "</span></button>" +
+    "</div>";
+};
+
 PAGES.khataCardsHtml = function (khatas, opts) {
   opts = opts || {};
   if (!khatas.length) return emptyState("icon-file-search", "No Khata records found", opts.emptyMsg || "We couldn't find any Khata matching your search.");
@@ -949,26 +965,44 @@ PAGES.blockDetail = function (blockId) {
   const block = STATE.blocks[blockId];
   if (!block) return emptyState("icon-triangle-alert", "Block not found", "This block may have been removed.");
   const khatas = DATA.khatasForBlock(blockId);
+  const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
+  const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
+  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
   const loc = block.location || {};
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks">Blocks</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(block.blockName) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(block.blockName) + "</h1><p>" + escapeHtml(block.blockCode || "") + " &middot; " + escapeHtml(loc.village || "") + ", " + escapeHtml(loc.district || "") + "</p></div></div>" +
-    '<div class="section-title">Khatas in this block <span class="muted">' + khatas.length + " total</span></div>" +
-    PAGES.khataCardsHtml(khatas, { emptyMsg: "No khatas have been recorded for this block yet." })
+    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    '<div class="section-title">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
+    PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
 
 PAGES.khatasList = function () {
   const khatas = DATA.khataList();
+  if (!STATE.loaded) {
+    return '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
+      '<div class="page-head"><div><h1>All Khata records</h1></div></div>' + skeletonCards(6);
+  }
+  const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
+  const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
+  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
     '<div class="page-head"><div><h1>All Khata records</h1><p>' + khatas.length + " record(s) across every block.</p></div></div>" +
-    (STATE.loaded ? PAGES.khataCardsHtml(khatas) : skeletonCards(6))
+    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
 
 PAGES.afterEntityGrid = function () {
   $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
+  $all("[data-status-filter]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      STATE.khataStatusFilter = el.getAttribute("data-status-filter");
+      Router.render();
+    });
+  });
 };
 
 /* ============================================================
@@ -1020,7 +1054,8 @@ PAGES.khataDetail = function (khataId) {
 };
 
 PAGES.defItem = function (label, value) {
-  return '<div class="item"><b>' + (value != null && value !== "" ? escapeHtml(value) : "&mdash;") + "</b><span>" + escapeHtml(label) + "</span></div>";
+  const display = (value != null && value !== "" && value !== "&mdash;") ? escapeHtml(value) : "&mdash;";
+  return '<div class="item"><b>' + display + "</b><span>" + escapeHtml(label) + "</span></div>";
 };
 
 PAGES.compensationTabHtml = function (khataId) {
@@ -1141,7 +1176,7 @@ const UPLOAD = {
    send all rows to the backend in one request.
    ============================================================ */
 const IMPORT = {
-  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [],
+    parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedUpdateRows: [],
   REQUIRED_COLUMNS: ["blockName", "khataNumber", "rtName"],
   TEMPLATE_COLUMNS: ["blockName", "blockCode", "village", "district", "khataNumber", "rtName", "acquiredLandAcres", "landCategory", "landAmount", "structureAmount", "treeAmount", "exGratia", "status"],
   STRUCTURE_COLUMNS: ["blockName", "khataNumber", "type", "area", "condition", "usage", "remarks"],
@@ -1166,13 +1201,17 @@ const IMPORT = {
     reader.onload = function (e) {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
-        const kSheet = wb.Sheets["Khatas"] || wb.Sheets[wb.SheetNames[0]];
+        const RESERVED_SHEETS = ["Structures", "Trees", "UpdateKhatas"];
+        const firstSheetName = wb.SheetNames[0];
+        const kSheet = wb.Sheets["Khatas"] || (RESERVED_SHEETS.indexOf(firstSheetName) === -1 ? wb.Sheets[firstSheetName] : null);
         const rows = kSheet ? XLSX.utils.sheet_to_json(kSheet, { defval: "" }) : [];
         const sSheet = wb.Sheets["Structures"];
         const structureRows = sSheet ? XLSX.utils.sheet_to_json(sSheet, { defval: "" }) : [];
         const tSheet = wb.Sheets["Trees"];
         const treeRows = tSheet ? XLSX.utils.sheet_to_json(tSheet, { defval: "" }) : [];
-        IMPORT.validateAndPreview(rows, structureRows, treeRows);
+        const uSheet = wb.Sheets["UpdateKhatas"];
+        const updateRows = uSheet ? XLSX.utils.sheet_to_json(uSheet, { defval: "" }) : [];
+        IMPORT.validateAndPreview(rows, structureRows, treeRows, updateRows);
       } catch (err) {
         showToast("Could not read that file - is it a valid .xlsx?", "error");
       }
@@ -1180,42 +1219,53 @@ const IMPORT = {
     reader.readAsArrayBuffer(file);
   },
 
-  validateAndPreview: function (rows, structureRows, treeRows) {
+    validateAndPreview: function (rows, structureRows, treeRows, updateRows) {
+    updateRows = updateRows || [];
     const missingCols = IMPORT.REQUIRED_COLUMNS.filter(function (c) { return rows.length && !(c in rows[0]); });
     const host = $("#importPreview");
     if (rows.length && missingCols.length) {
       host.innerHTML = emptyState("icon-triangle-alert", "Missing columns", "Required in Khatas sheet: " + missingCols.join(", ") + ".");
-      IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = [];
+      IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedUpdateRows = [];
       return;
     }
     const validRows = rows.filter(function (r) { return r.khataNumber && r.rtName && r.blockName; });
     const validStructures = structureRows.filter(function (r) { return r.blockName && r.khataNumber; });
     const validTrees = treeRows.filter(function (r) { return r.blockName && r.khataNumber; });
-    IMPORT.parsedRows = validRows; IMPORT.parsedStructureRows = validStructures; IMPORT.parsedTreeRows = validTrees;
+    const validUpdates = updateRows.filter(function (r) { return r.blockName && r.khataNumber; });
+    IMPORT.parsedRows = validRows; IMPORT.parsedStructureRows = validStructures;
+    IMPORT.parsedTreeRows = validTrees; IMPORT.parsedUpdateRows = validUpdates;
 
-    if (!validRows.length && !validStructures.length && !validTrees.length) {
+    if (!validRows.length && !validStructures.length && !validTrees.length && !validUpdates.length) {
       host.innerHTML = emptyState("icon-triangle-alert", "Nothing to import", "No valid rows found in any sheet.");
       return;
     }
     host.innerHTML =
       '<div class="badge badge-brand">' + validRows.length + ' khata row(s)</div> ' +
       '<div class="badge badge-brand">' + validStructures.length + ' structure row(s)</div> ' +
-      '<div class="badge badge-brand">' + validTrees.length + ' tree row(s)</div>' +
+      '<div class="badge badge-brand">' + validTrees.length + ' tree row(s)</div> ' +
+      '<div class="badge badge-brand">' + validUpdates.length + ' field-update row(s)</div>' +
       '<button class="btn btn-primary btn-sm mt-16" id="btnConfirmImport"><i class="icon-upload i"></i>Import</button>';
     $("#btnConfirmImport").addEventListener("click", IMPORT.submit);
   },
 
-  submit: function () {
-    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length) return;
+    submit: function () {
+    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedUpdateRows.length) return;
     const btn = $("#btnConfirmImport");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Importing&hellip;</span>';
-    API.post("bulkImport", { token: STATE.token, rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows })
-      .then(function (data) {
-        showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s) imported.", "success");
+    const p1 = (IMPORT.parsedRows.length || IMPORT.parsedStructureRows.length || IMPORT.parsedTreeRows.length)
+      ? API.post("bulkImport", { token: STATE.token, rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows })
+      : Promise.resolve({ khatasCreated: 0, structuresAdded: 0, treesAdded: 0 });
+    p1.then(function (data) {
+      const p2 = IMPORT.parsedUpdateRows.length
+        ? API.post("updateKhataFields", { token: STATE.token, rows: IMPORT.parsedUpdateRows })
+        : Promise.resolve({ matched: 0 });
+      return p2.then(function (updData) {
+        showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + updData.matched + " field update(s) done.", "success");
         $("#importPreview").innerHTML = "";
-        IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = [];
+        IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedUpdateRows = [];
         return DATA.loadBootstrap();
-      })
+      });
+    })
       .then(function () { Router.render(); })
       .catch(function (err) { showToast(err.message || "Import failed", "error"); btn.disabled = false; btn.innerHTML = '<i class="icon-upload i"></i><span>Retry import</span>'; });
   },
