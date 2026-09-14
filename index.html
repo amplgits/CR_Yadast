@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>RT Compensation Management System</title>
-<meta name="description" content="Search, browse and manage RT compensation records — blocks, khatas, land, structures, trees and documents.">
+<meta name="description" content="Search, browse and manage RT compensation records — phases, blocks, khatas, land, structures, trees and documents.">
 <meta name="theme-color" content="#3730A3">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -168,9 +168,9 @@ nav.bottomnav{
 @media (min-width:900px){ nav.bottomnav{display:none;} }
 nav.bottomnav a{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  color:var(--ink-mute);font-size:10.5px;font-weight:600;
+  color:var(--ink-mute);font-size:9.5px;font-weight:600;min-width:0;
 }
-nav.bottomnav a .i{font-size:20px;}
+nav.bottomnav a .i{font-size:19px;}
 nav.bottomnav a.active{color:var(--brand-2);}
 
 /* ---------------- Mobile search sheet trigger ---------------- */
@@ -207,7 +207,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .section-title{font-size:15.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
 .section-title .muted{font-size:12px;color:var(--ink-mute);font-weight:600;}
 
-/* ---------------- Grid of block/khata cards ---------------- */
+/* ---------------- Grid of block/khata/phase cards ---------------- */
 .grid-cards{display:grid;grid-template-columns:1fr;gap:12px;}
 @media (min-width:640px){ .grid-cards{grid-template-columns:repeat(2,1fr);} }
 @media (min-width:1024px){ .grid-cards{grid-template-columns:repeat(3,1fr);} }
@@ -252,7 +252,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .tabpanel.active{display:block;}
 @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 
-/* ---------------- RT profile header ---------------- */
+/* ---------------- RT / phase profile header ---------------- */
 .rt-hero{
   background:var(--brand-grad);border-radius:var(--radius-lg);padding:22px 22px;color:#fff;
   display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:20px;
@@ -275,6 +275,18 @@ nav.bottomnav a.active{color:var(--brand-2);}
   display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .sub-item-card .name{font-weight:700;font-size:13.8px;}
 .sub-item-card .details{font-size:12.3px;color:var(--ink-soft);margin-top:3px;}
+
+/* ---------------- Phase progress stepper (compact, on cards) ---------------- */
+.stage-track{display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow-x:auto;}
+.stage-step{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9px;font-weight:700;
+  color:var(--ink-mute);min-width:56px;flex-shrink:0;text-align:center;}
+.stage-step .i{font-size:14px;width:26px;height:26px;border-radius:50%;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;color:var(--ink-mute);}
+.stage-step.done{color:var(--money-1);}
+.stage-step.done .i{background:var(--money-grad);color:#fff;box-shadow:0 2px 6px rgba(16,185,129,0.35);}
+.stage-step.blocked{color:var(--rose-1);}
+.stage-step.blocked .i{background:var(--rose-grad);color:#fff;box-shadow:0 2px 6px rgba(244,63,94,0.35);}
+.stage-line{flex:0 0 14px;height:2px;background:var(--border);margin-top:12px;align-self:flex-start;}
 
 /* ---------------- Document gallery + lightbox ---------------- */
 .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;}
@@ -342,15 +354,20 @@ nav.bottomnav a.active{color:var(--brand-2);}
   width:100%;height:42px;border-radius:9px;border:1.5px solid var(--border);padding:0 12px;
   font-family:inherit;font-size:14px;color:var(--ink);transition:border-color .15s;
 }
+.field textarea{height:auto;padding:10px 12px;resize:vertical;}
 .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand-2);}
 .field .error-msg{color:var(--rose-1);font-size:12px;margin-top:5px;font-weight:600;display:none;}
 .field.has-error input{border-color:var(--rose-1);}
 .field.has-error .error-msg{display:block;}
 .modal-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:22px;margin-bottom:14px;}
+.check-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.check-row input[type="checkbox"]{width:19px;height:19px;flex-shrink:0;accent-color:var(--brand-2);}
+.check-row label{margin:0;font-size:13.8px;font-weight:600;color:var(--ink);}
+.check-row .hint{font-size:11.5px;color:var(--ink-mute);font-weight:600;display:block;margin-top:2px;}
 
 /* ---------------- Confirm dialog buttons row ---------------- */
-.btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
+.btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;}
 
 /* ---------------- Compensation panel (admin) ---------------- */
 .comp-hero{background:var(--money-grad);border-radius:var(--radius-md);padding:18px 20px;color:#fff;margin-bottom:14px;}
@@ -412,6 +429,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
   <nav class="sidebar" id="sidebarNav">
     <div class="navgroup-label">Overview</div>
     <a href="#/dashboard" class="navitem" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Dashboard</a>
+    <a href="#/phases" class="navitem" data-route="phases"><i class="icon-flag i"></i>Phases</a>
     <a href="#/blocks" class="navitem" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
     <a href="#/khatas" class="navitem" data-route="khatas"><i class="icon-file-text i"></i>All Khatas</a>
     <a href="#/documents" class="navitem" data-route="documents"><i class="icon-folder i"></i>Documents</a>
@@ -424,9 +442,9 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
   <nav class="bottomnav">
     <a href="#/dashboard" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Home</a>
+    <a href="#/phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
     <a href="#/blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
     <a href="#/khatas" data-route="khatas"><i class="icon-file-text i"></i>Khatas</a>
-    <a href="#/documents" data-route="documents"><i class="icon-folder i"></i>Docs</a>
     <a href="#/admin/analytics" class="admin-only hidden" data-route="analytics"><i class="icon-bar-chart-3 i"></i>Admin</a>
   </nav>
 
@@ -522,6 +540,43 @@ nav.bottomnav a.active{color:var(--brand-2);}
   </div>
 </div>
 
+<!-- ============ PHASE SYSTEM MODALS ============ -->
+
+<div class="modal-backdrop" id="createPhaseModal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-flag i"></i></div>
+    <h2>Create a new phase</h2>
+    <p class="modal-sub">The next phase is named automatically (Phase-1, Phase-2, &hellip;) based on how many already exist.</p>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnConfirmCreatePhase"><i class="icon-plus i"></i><span>Create phase</span></button>
+    <div class="btn-row" style="justify-content:center;margin-top:10px;">
+      <button class="btn btn-ghost btn-sm" id="btnCancelCreatePhase">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="enlistKhataModal">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-list-plus i"></i></div>
+    <h2>Enlist khatas</h2>
+    <p class="modal-sub">Select khatas to add to this phase. Already-enlisted khatas are hidden from this list.</p>
+    <div class="field" style="margin-bottom:8px;"><input type="text" id="enlistSearchInput" placeholder="Search RT name, khata number or block&hellip;"></div>
+    <div id="enlistKhataList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;"></div>
+    <div class="btn-row" style="justify-content:space-between;">
+      <span class="text-sm text-mute" id="enlistSelCount">0 selected</span>
+      <div class="flex gap-8">
+        <button class="btn btn-ghost btn-sm" id="btnCancelEnlist">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmEnlist"><i class="icon-check i"></i><span>Enlist selected</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="pkDetailModal">
+  <div class="modal" style="max-width:480px;">
+    <div id="pkModalBody"><!-- rendered by PKModal.render() --></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -555,6 +610,8 @@ const STATE = {
   documents: {},
   compensation: {},
   documentImages: {}, // docId -> base64 data URL, fetched on demand
+  phases: {},         // phaseId -> {name, order, createdAt, createdBy}
+  phaseKhatas: {},    // pkId -> {phaseId, khataId, noticeServed, documentsVerified, compensationReceived, escalation, ...}
   isAdmin: false,
   adminId: null,
   token: null,
@@ -563,6 +620,7 @@ const STATE = {
   charts: {},
   khataStatusFilter: "all",
   khataDocFilter: "all",
+  phaseKhataFilter: "all",
 };
 
 /* ============================================================
@@ -591,6 +649,14 @@ function fmtINR(n) {
 function fmtDate(ts) {
   if (!ts) return "&mdash;";
   return new Date(ts).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function daysOpen(ts) {
+  if (!ts) return "&mdash;";
+  const days = Math.max(0, Math.floor((Date.now() - ts) / 86400000));
+  if (days === 0) return "Opened today";
+  if (days === 1) return "Open 1 day";
+  return "Open " + days + " days";
 }
 
 function debounce(fn, ms) {
@@ -726,6 +792,8 @@ const DATA = {
       STATE.blocks = data.blocks || {};
       STATE.khatas = data.khatas || {};
       STATE.documents = data.documents || {};
+      STATE.phases = data.phases || {};
+      STATE.phaseKhatas = data.phaseKhatas || {};
       STATE.stats = data.stats || {};
       STATE.loaded = true;
       SEARCH.rebuildIndex();
@@ -769,6 +837,95 @@ const DATA = {
     return Object.keys(STATE.compensation).reduce(function (sum, id) {
       return sum + Number(STATE.compensation[id].totalAmount || 0);
     }, 0);
+  },
+
+    totalCompensation: function () {
+    return Object.keys(STATE.compensation).reduce(function (sum, id) {
+      return sum + Number(STATE.compensation[id].totalAmount || 0);
+    }, 0);
+  },
+
+  /** Sum of compensation.totalAmount ONLY for khatas whose phase record
+   * has compensationReceived = true - i.e. money actually marked as
+   * paid out, not just entered/on-record. A khata is counted once even
+   * if (unusually) it's marked received in more than one phase. */
+  disbursedCompensationTotal: function () {
+    const paidKhataIds = {};
+    DATA.allPhaseKhataViews().forEach(function (v) {
+      if (v.compensationReceived) paidKhataIds[v.pk.khataId] = true;
+    });
+    return Object.keys(paidKhataIds).reduce(function (sum, khataId) {
+      const c = STATE.compensation[khataId];
+      return sum + (c ? Number(c.totalAmount || 0) : 0);
+    }, 0);
+  },
+
+  /* ---------------- Phase system ---------------- */
+
+  phaseList: function () {
+    return Object.keys(STATE.phases).map(function (id) { return Object.assign({ id: id }, STATE.phases[id]); })
+      .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+  },
+
+  phaseKhataList: function (phaseId) {
+    return Object.keys(STATE.phaseKhatas)
+      .map(function (id) { return Object.assign({ id: id }, STATE.phaseKhatas[id]); })
+      .filter(function (pk) { return pk.phaseId === phaseId; });
+  },
+
+  enlistedKhataIdsForPhase: function (phaseId) {
+    const set = {};
+    DATA.phaseKhataList(phaseId).forEach(function (pk) { set[pk.khataId] = true; });
+    return set;
+  },
+
+    allEnlistedKhataIds: function () {
+    const set = {};
+    Object.keys(STATE.phaseKhatas).forEach(function (id) { set[STATE.phaseKhatas[id].khataId] = true; });
+    return set;
+  },
+
+  khataPhaseEntries: function (khataId) {
+    return Object.keys(STATE.phaseKhatas)
+      .map(function (id) { return Object.assign({ id: id }, STATE.phaseKhatas[id]); })
+      .filter(function (pk) { return pk.khataId === khataId; });
+  },
+
+  /** Computes the full display view for one phaseKhata record: which
+   * of the four steps are done, the overall stage, and whether an
+   * escalation is currently open. This is the single source of truth
+   * for "what step is this khata currently in". */
+  pkView: function (pk) {
+    const khata = STATE.khatas[pk.khataId] || {};
+    const block = STATE.blocks[khata.blockId] || {};
+    const docsCollected = PAGES.isDocComplete(pk.khataId);
+    const noticeServed = !!pk.noticeServed;
+    const documentsVerified = !!pk.documentsVerified;
+    const compensationReceived = !!pk.compensationReceived;
+
+    let stageIndex;
+    if (compensationReceived) stageIndex = 4;
+    else if (documentsVerified) stageIndex = 3;
+    else if (noticeServed && docsCollected) stageIndex = 2;
+    else if (noticeServed || docsCollected) stageIndex = 1;
+    else stageIndex = 0;
+
+    const stageLabels = ["Enlisted", "In Progress", "Ready for Verification", "Documents Verified", "Compensation Received"];
+
+    return {
+      id: pk.id, phaseId: pk.phaseId, pk: pk,
+      khata: khata, block: block,
+      docsCollected: docsCollected, noticeServed: noticeServed,
+      documentsVerified: documentsVerified, compensationReceived: compensationReceived,
+      stageIndex: stageIndex, stageLabel: stageLabels[stageIndex],
+      hasEscalation: !!(pk.escalation && pk.escalation.remarks),
+    };
+  },
+
+  allPhaseKhataViews: function () {
+    return Object.keys(STATE.phaseKhatas).map(function (id) {
+      return DATA.pkView(Object.assign({ id: id }, STATE.phaseKhatas[id]));
+    });
   },
 };
 
@@ -864,6 +1021,7 @@ const Router = {
     if (parts[0] === "admin") return { name: parts[1] || "analytics", params: { id: parts[2] } };
     if (parts[0] === "blocks" && parts[1]) return { name: "blockDetail", params: { id: parts[1] } };
     if (parts[0] === "khata" && parts[1]) return { name: "khataDetail", params: { id: parts[1] } };
+    if (parts[0] === "phases" && parts[1]) return { name: "phaseDetail", params: { id: parts[1] } };
     return { name: parts[0], params: {} };
   },
 
@@ -871,11 +1029,17 @@ const Router = {
     const route = Router.parse();
     if (Router.ADMIN_ROUTES.indexOf(route.name) !== -1 && !STATE.isAdmin) route.name = "dashboard";
     STATE.currentRoute = route;
-    UI.setActiveNav(route.name === "blockDetail" ? "blocks" : route.name === "khataDetail" ? "khatas" : route.name);
+    UI.setActiveNav(
+      route.name === "blockDetail" ? "blocks" :
+      route.name === "khataDetail" ? "khatas" :
+      route.name === "phaseDetail" ? "phases" : route.name
+    );
 
     const root = $("#pageRoot");
     switch (route.name) {
       case "dashboard": root.innerHTML = PAGES.dashboard(); PAGES.afterEntityGrid(); break;
+      case "phases": root.innerHTML = PAGES.phasesList(); PAGES.afterPhasesList(); break;
+      case "phaseDetail": root.innerHTML = PAGES.phaseDetail(route.params.id); PAGES.afterPhaseDetail(route.params.id); break;
       case "blocks": root.innerHTML = PAGES.blocksList(); PAGES.afterEntityGrid(); break;
       case "blockDetail": root.innerHTML = PAGES.blockDetail(route.params.id); PAGES.afterEntityGrid(); break;
       case "khatas": root.innerHTML = PAGES.khatasList(); PAGES.afterEntityGrid(); break;
@@ -904,15 +1068,23 @@ PAGES.dashboard = function () {
   const k = DATA.blockKPIs();
   const compTotal = STATE.isAdmin ? DATA.totalCompensation() : null;
 
+  const enlistedIdSet = DATA.allEnlistedKhataIds();
+  const enlistedCount = Object.keys(enlistedIdSet).length;
+  const notEnlistedCount = Math.max(0, (k.totalKhatas || 0) - enlistedCount);
+
   const kpis = [
-    { icon: "icon-map", label: "Blocks", value: k.totalBlocks || 0, grad: "var(--brand-grad)" },
+    { icon: "icon-flag", label: "Phases", value: DATA.phaseList().length, grad: "var(--brand-grad)" },
     { icon: "icon-file-text", label: "Khatas", value: k.totalKhatas || 0, grad: "linear-gradient(135deg,#7C3AED,#A855F7)" },
+    { icon: "icon-list-plus", label: "Khatas added to phases", value: enlistedCount, grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
+    { icon: "icon-list-x", label: "Khatas remaining", value: notEnlistedCount, grad: "linear-gradient(135deg,#94A3B8,#64748B)" },
     { icon: "icon-users", label: "RT records", value: k.totalRTs || 0, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
     { icon: "icon-image", label: "Documents", value: k.totalDocuments || 0, grad: "linear-gradient(135deg,#D97706,#F59E0B)" },
   ];
   if (STATE.isAdmin) {
     kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" });
-    kpis.push({ icon: "icon-check-circle", label: "Documentation Completed", value: PAGES.filterKhatasByDoc(DATA.khataList(), "complete").length, grad: "linear-gradient(135deg,#059669,#10B981)" });
+    kpis.push({ icon: "icon-wallet", label: "Compensation disbursed", value: fmtINR(DATA.disbursedCompensationTotal()), grad: "linear-gradient(135deg,#059669,#10B981)" });
+    kpis.push({ icon: "icon-check-circle", label: "Compensation received (khatas)", value: DATA.allPhaseKhataViews().filter(function (v) { return v.compensationReceived; }).length, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" });
+    kpis.push({ icon: "icon-triangle-alert", label: "Open escalations", value: DATA.allPhaseKhataViews().filter(function (v) { return v.hasEscalation; }).length, grad: "var(--rose-grad)" });
   }
 
   const blockIds = Object.keys(STATE.blocks);
@@ -1059,6 +1231,372 @@ PAGES.afterEntityGrid = function () {
 };
 
 /* ============================================================
+   PAGES - PHASES (list + detail)
+   ============================================================ */
+PAGES.phasesList = function () {
+  if (!STATE.loaded) return skeletonCards(3);
+  const phases = DATA.phaseList();
+  return (
+    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Phases</div>' +
+    '<div class="page-head"><div><h1>Compensation Phases</h1><p>Track notice serving, document collection, verification and payment, phase by phase.</p></div>' +
+    '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button></div>' +
+    (phases.length
+      ? '<div class="grid-cards">' + phases.map(PAGES.phaseCardHtml).join("") + "</div>"
+      : emptyState("icon-flag", "No phases yet", "Create Phase-1 to begin enlisting Khatas for notice and document collection.",
+          '<button class="btn btn-primary btn-sm" id="btnCreatePhaseEmpty"><i class="icon-plus i"></i>Create phase</button>'))
+  );
+};
+
+PAGES.phaseCardHtml = function (p) {
+  const views = DATA.phaseKhataList(p.id).map(DATA.pkView);
+  const total = views.length;
+  const notice = views.filter(function (v) { return v.noticeServed; }).length;
+  const docs = views.filter(function (v) { return v.docsCollected; }).length;
+  const verified = views.filter(function (v) { return v.documentsVerified; }).length;
+  const paid = views.filter(function (v) { return v.compensationReceived; }).length;
+  const escalated = views.filter(function (v) { return v.hasEscalation; }).length;
+  return '<div class="entity-card" data-nav="#/phases/' + p.id + '"><div class="eyebrow">PHASE</div><h3>' + escapeHtml(p.name) + '</h3>' +
+    '<div class="meta"><span><i class="icon-file-text i"></i>' + total + ' khata(s)</span><span><i class="icon-indian-rupee i"></i>' + paid + ' paid</span></div>' +
+    '<div class="badge-row">' +
+    '<span class="badge badge-brand">Notice ' + notice + '/' + total + '</span>' +
+    '<span class="badge badge-slate">Docs ' + docs + '/' + total + '</span>' +
+    '<span class="badge badge-green">Verified ' + verified + '/' + total + '</span>' +
+    (escalated ? '<span class="badge badge-rose"><i class="icon-triangle-alert i"></i>' + escalated + ' escalated</span>' : '') +
+    '</div></div>';
+};
+
+PAGES.afterPhasesList = function () {
+  PAGES.afterEntityGrid();
+  const btn = $("#btnCreatePhase"), btnEmpty = $("#btnCreatePhaseEmpty");
+  if (btn) btn.addEventListener("click", PhaseModal.openCreate);
+  if (btnEmpty) btnEmpty.addEventListener("click", PhaseModal.openCreate);
+};
+
+PAGES.phaseDetail = function (phaseId) {
+  if (!STATE.loaded) return skeletonCards(4);
+  const phase = STATE.phases[phaseId];
+  if (!phase) return emptyState("icon-triangle-alert", "Phase not found", "This phase may have been removed.");
+
+  const views = DATA.phaseKhataList(phaseId).map(DATA.pkView);
+  const total = views.length;
+  const counts = { notice: 0, docs: 0, verified: 0, paid: 0, escalated: 0 };
+  views.forEach(function (v) {
+    if (v.noticeServed) counts.notice++;
+    if (v.docsCollected) counts.docs++;
+    if (v.documentsVerified) counts.verified++;
+    if (v.compensationReceived) counts.paid++;
+    if (v.hasEscalation) counts.escalated++;
+  });
+
+  const f = STATE.phaseKhataFilter;
+  const filtered = views.filter(function (v) {
+    if (f === "escalated") return v.hasEscalation;
+    if (f === "pending") return v.stageIndex < 4;
+    if (f === "completed") return v.stageIndex === 4;
+    return true;
+  });
+
+  return (
+    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/phases">Phases</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(phase.name) + "</div>" +
+    '<div class="page-head"><div><h1>' + escapeHtml(phase.name) + '</h1><p>' + total + ' khata(s) enlisted in this phase.</p></div>' +
+    '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button></div>' +
+
+    '<div class="kpi-grid mb-16">' +
+    '<div class="kpi-card"><div class="accentbar" style="background:var(--brand-grad)"></div><div class="kpi-icon" style="background:var(--brand-grad)"><i class="icon-bell-ring i"></i></div><div class="kpi-value">' + counts.notice + '/' + total + '</div><div class="kpi-label">Notice served</div></div>' +
+    '<div class="kpi-card"><div class="accentbar" style="background:linear-gradient(135deg,#7C3AED,#A855F7)"></div><div class="kpi-icon" style="background:linear-gradient(135deg,#7C3AED,#A855F7)"><i class="icon-folder-check i"></i></div><div class="kpi-value">' + counts.docs + '/' + total + '</div><div class="kpi-label">Documents collected</div></div>' +
+    '<div class="kpi-card"><div class="accentbar" style="background:linear-gradient(135deg,#0891B2,#06B6D4)"></div><div class="kpi-icon" style="background:linear-gradient(135deg,#0891B2,#06B6D4)"><i class="icon-badge-check i"></i></div><div class="kpi-value">' + counts.verified + '/' + total + '</div><div class="kpi-label">Documents verified</div></div>' +
+    '<div class="kpi-card"><div class="accentbar" style="background:var(--money-grad)"></div><div class="kpi-icon" style="background:var(--money-grad)"><i class="icon-indian-rupee i"></i></div><div class="kpi-value">' + counts.paid + '/' + total + '</div><div class="kpi-label">Compensation received</div></div>' +
+    '</div>' +
+
+    '<div class="tabs">' +
+    '<button class="tab-btn' + (f === "all" ? " active" : "") + '" data-pk-filter="all">All <span class="muted">' + total + '</span></button>' +
+    '<button class="tab-btn' + (f === "pending" ? " active" : "") + '" data-pk-filter="pending">In progress <span class="muted">' + (total - counts.paid) + '</span></button>' +
+    '<button class="tab-btn' + (f === "completed" ? " active" : "") + '" data-pk-filter="completed">Completed <span class="muted">' + counts.paid + '</span></button>' +
+    '<button class="tab-btn' + (f === "escalated" ? " active" : "") + '" data-pk-filter="escalated">Escalated <span class="muted">' + counts.escalated + '</span></button>' +
+    '</div>' +
+
+    (filtered.length
+      ? '<div class="grid-cards">' + filtered.map(PAGES.pkCardHtml).join("") + "</div>"
+      : emptyState("icon-file-search", "No khatas here", total ? "No khatas match this filter." : "Enlist khatas into this phase to start tracking their progress."))
+  );
+};
+
+PAGES.pkCardHtml = function (v) {
+  const steps = [
+    { label: "Notice", done: v.noticeServed, icon: "icon-bell-ring" },
+    { label: "Documents", done: v.docsCollected, icon: "icon-folder-check" },
+    { label: "Verified", done: v.documentsVerified, icon: "icon-badge-check" },
+    { label: "Compensation", done: v.compensationReceived, icon: "icon-indian-rupee" },
+  ];
+  // The first not-yet-done step is where this khata is currently stuck.
+  // If an escalation is open, that step (and only that one) turns red.
+  const blockingIndex = steps.findIndex(function (s) { return !s.done; });
+  const stepsHtml = steps.map(function (s, i) {
+    const cls = s.done ? " done" : (v.hasEscalation && i === blockingIndex ? " blocked" : "");
+    return '<div class="stage-step' + cls + '"><i class="' + s.icon + ' i"></i><span>' + s.label + '</span></div>';
+  }).join('<div class="stage-line"></div>');
+
+  return '<div class="entity-card" data-pk-open="' + v.id + '"><div class="eyebrow">KHATA ' + escapeHtml(v.khata.khataNumber || "") + '</div><h3>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h3>' +
+    '<div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(v.block.blockName || "&mdash;") + '</span></div>' +
+    '<div class="stage-track mt-8">' + stepsHtml + '</div>' +
+    (v.hasEscalation
+      ? '<div class="badge-row mt-8"><span class="badge badge-rose"><i class="icon-triangle-alert i"></i>Escalated</span></div>'
+      : '<div class="badge-row mt-8"><span class="badge badge-brand">' + escapeHtml(v.stageLabel) + '</span></div>') +
+    '</div>';
+};
+
+PAGES.afterPhaseDetail = function (phaseId) {
+  $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
+  $all("[data-pk-filter]").forEach(function (el) {
+    el.addEventListener("click", function () { STATE.phaseKhataFilter = el.getAttribute("data-pk-filter"); Router.render(); });
+  });
+  $all("[data-pk-open]").forEach(function (el) {
+    el.addEventListener("click", function () { PKModal.open(el.getAttribute("data-pk-open")); });
+  });
+  const btn = $("#btnEnlistKhata");
+  if (btn) btn.addEventListener("click", function () { EnlistModal.open(phaseId); });
+};
+
+/* ============================================================
+   PHASE / ENLIST / PHASE-KHATA MODAL CONTROLLERS
+   ============================================================ */
+const PhaseModal = {
+  openCreate: function () { $("#createPhaseModal").classList.add("open"); },
+  close: function () { $("#createPhaseModal").classList.remove("open"); },
+  create: function () {
+    const btn = $("#btnConfirmCreatePhase");
+    btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Creating&hellip;</span>';
+    API.post("createPhase", { token: STATE.token }).then(function (data) {
+      return DATA.loadBootstrap().then(function () { return data; });
+    }).then(function (data) {
+      PhaseModal.close();
+      showToast(data.name + " created.", "success");
+      location.hash = "#/phases/" + data.phaseId;
+      Router.render();
+    }).catch(function (err) {
+      showToast(err.message || "Could not create phase", "error");
+    }).finally(function () {
+      btn.disabled = false; btn.innerHTML = '<i class="icon-plus i"></i><span>Create phase</span>';
+    });
+  },
+};
+
+const EnlistModal = {
+  phaseId: null,
+  selected: {},
+
+  open: function (phaseId) {
+    EnlistModal.phaseId = phaseId;
+    EnlistModal.selected = {};
+    $("#enlistSearchInput").value = "";
+    EnlistModal.renderList("");
+    $("#enlistKhataModal").classList.add("open");
+  },
+  close: function () { $("#enlistKhataModal").classList.remove("open"); },
+
+  availableKhatas: function () {
+    const enlisted = DATA.enlistedKhataIdsForPhase(EnlistModal.phaseId);
+    return DATA.khataList().filter(function (k) { return !enlisted[k.id]; });
+  },
+
+  renderList: function (q) {
+    q = (q || "").trim().toLowerCase();
+    const host = $("#enlistKhataList");
+    const list = EnlistModal.availableKhatas().filter(function (k) {
+      if (!q) return true;
+      const blockName = (STATE.blocks[k.blockId] || {}).blockName || "";
+      return (k.rtName + " " + k.khataNumber + " " + blockName).toLowerCase().indexOf(q) !== -1;
+    });
+    if (!list.length) {
+      host.innerHTML = emptyState("icon-file-search", "No khatas available", "All matching khatas are already enlisted in this phase.");
+      EnlistModal.updateCount();
+      return;
+    }
+    host.innerHTML = list.map(function (k) {
+      const blockName = (STATE.blocks[k.blockId] || {}).blockName || "";
+      const checked = EnlistModal.selected[k.id] ? " checked" : "";
+      return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<input type="checkbox" data-ek-id="' + k.id + '"' + checked + ' style="width:17px;height:17px;flex-shrink:0;">' +
+        '<span style="flex:1;"><span style="display:block;font-size:13.5px;font-weight:700;">' + escapeHtml(k.rtName || "Unnamed RT") + '</span>' +
+        '<span class="text-sm text-mute">Khata ' + escapeHtml(k.khataNumber) + ' &middot; ' + escapeHtml(blockName) + '</span></span>' +
+        '</label>';
+    }).join("");
+    $all("[data-ek-id]", host).forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        if (cb.checked) EnlistModal.selected[cb.getAttribute("data-ek-id")] = true;
+        else delete EnlistModal.selected[cb.getAttribute("data-ek-id")];
+        EnlistModal.updateCount();
+      });
+    });
+    EnlistModal.updateCount();
+  },
+
+  updateCount: function () { $("#enlistSelCount").textContent = Object.keys(EnlistModal.selected).length + " selected"; },
+
+  submit: function () {
+    const ids = Object.keys(EnlistModal.selected);
+    if (!ids.length) { showToast("Select at least one khata.", "error"); return; }
+    const btn = $("#btnConfirmEnlist");
+    btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Enlisting&hellip;</span>';
+    API.post("enlistKhatas", { token: STATE.token, phaseId: EnlistModal.phaseId, khataIds: ids }).then(function (data) {
+      showToast((data.added || ids.length) + " khata(s) enlisted.", "success");
+      EnlistModal.close();
+      return DATA.loadBootstrap();
+    }).then(function () { Router.render(); })
+      .catch(function (err) { showToast(err.message || "Could not enlist khatas", "error"); })
+      .finally(function () { btn.disabled = false; btn.innerHTML = '<i class="icon-check i"></i><span>Enlist selected</span>'; });
+  },
+};
+
+/** The phase-khata detail modal: notice/verify/paid toggles plus the
+ * escalation remark box. Content is regenerated on every render()
+ * call so it always reflects the latest STATE after a save. */
+const PKModal = {
+  currentId: null,
+
+  open: function (pkId) {
+    PKModal.currentId = pkId;
+    PKModal.render();
+    $("#pkDetailModal").classList.add("open");
+  },
+  close: function () { $("#pkDetailModal").classList.remove("open"); },
+
+  render: function () {
+    const pk = STATE.phaseKhatas[PKModal.currentId];
+    if (!pk) { PKModal.close(); return; }
+    const v = DATA.pkView(Object.assign({ id: PKModal.currentId }, pk));
+    const esc = pk.escalation || null;
+    const khataId = pk.khataId;
+    const readyForVerify = v.noticeServed && v.docsCollected;
+
+    let html = '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
+      '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
+      '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.block.blockName || "") + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
+
+      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + '><label for="pkNotice">Notice served</label></div>' +
+
+      '<div class="field"><label>Documents collected</label>' +
+      '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
+      '<span class="badge ' + (v.docsCollected ? "badge-green" : "badge-amber") + '">' + (v.docsCollected ? "Collected" : "Pending") + '</span>' +
+      '<a href="#/khata/' + khataId + '" id="pkGoDocs" class="btn btn-ghost btn-sm"><i class="icon-folder i"></i>Manage documents</a>' +
+      '</div></div>';
+
+    if (STATE.isAdmin) {
+      html +=
+        '<div class="check-row"><input type="checkbox" id="pkVerified"' + (v.documentsVerified ? " checked" : "") + (!readyForVerify && !v.documentsVerified ? " disabled" : "") + '>' +
+        '<label for="pkVerified">Documents verified' + (!readyForVerify && !v.documentsVerified ? '<span class="hint">Needs notice served + documents collected first</span>' : '') + '</label></div>' +
+        '<div class="check-row"><input type="checkbox" id="pkPaid"' + (v.compensationReceived ? " checked" : "") + (!v.documentsVerified && !v.compensationReceived ? " disabled" : "") + '>' +
+        '<label for="pkPaid">Compensation received' + (!v.documentsVerified && !v.compensationReceived ? '<span class="hint">Needs documents verified first</span>' : '') + '</label></div>';
+    } else {
+      html += '<div class="deflist mt-8 mb-16">' +
+        PAGES.defItem("Documents verified", v.documentsVerified ? "Yes" : "Pending") +
+        PAGES.defItem("Compensation", v.compensationReceived ? "Received" : "Pending") +
+        '</div>';
+    }
+
+    html += '<div class="field"><label>Escalate to admin</label>' +
+      '<textarea id="pkEscalationText" rows="3" placeholder="Describe the delay or refusal so the admin can follow up&hellip;">' + escapeHtml(esc ? esc.remarks : "") + '</textarea></div>' +
+      '<div class="btn-row" style="justify-content:flex-start;">' +
+      '<button class="btn btn-primary btn-sm" id="btnSaveEscalation"><i class="icon-flag i"></i>' + (esc ? "Update remark" : "Escalate") + '</button>' +
+      (esc ? '<button class="btn btn-danger btn-sm" id="btnDeleteEscalation"><i class="icon-trash-2 i"></i>Clear</button>' : '') +
+      '</div>' +
+      '<div class="btn-row" style="margin-top:8px;"><button class="btn btn-ghost btn-sm" id="btnClosePk">Close</button></div>';
+
+    $("#pkModalBody").innerHTML = html;
+    PKModal.wire();
+  },
+
+  wire: function () {
+    $("#btnClosePk").addEventListener("click", PKModal.close);
+    const goDocs = $("#pkGoDocs");
+    if (goDocs) goDocs.addEventListener("click", PKModal.close);
+
+    const noticeCb = $("#pkNotice");
+    noticeCb.addEventListener("change", function () {
+      const val = noticeCb.checked;
+      noticeCb.disabled = true;
+      API.post("setNoticeServed", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
+        .then(function () { return DATA.loadBootstrap(); })
+        .then(function () {
+          Router.render(); PKModal.render();
+          showToast(val ? "Notice marked as served." : "Notice mark removed.", "success");
+        })
+        .catch(function (err) {
+          showToast(err.message || "Could not update", "error");
+          PKModal.render();
+        });
+    });
+
+    const verifiedCb = $("#pkVerified");
+    if (verifiedCb) verifiedCb.addEventListener("change", function () {
+      const val = verifiedCb.checked;
+      verifiedCb.disabled = true;
+      API.post("setDocumentsVerified", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
+        .then(function () { return DATA.loadBootstrap(); })
+        .then(function () {
+          Router.render(); PKModal.render();
+          showToast(val ? "Documents marked verified." : "Verification removed.", "success");
+        })
+        .catch(function (err) {
+          showToast(err.message || "Could not update", "error");
+          PKModal.render();
+        });
+    });
+
+    const paidCb = $("#pkPaid");
+    if (paidCb) paidCb.addEventListener("change", function () {
+      const val = paidCb.checked;
+      paidCb.disabled = true;
+      API.post("setCompensationReceived", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
+        .then(function () { return DATA.loadBootstrap(); })
+        .then(function () {
+          Router.render(); PKModal.render();
+          showToast(val ? "Compensation marked received." : "Compensation mark removed.", "success");
+        })
+        .catch(function (err) {
+          showToast(err.message || "Could not update", "error");
+          PKModal.render();
+        });
+    });
+
+    $("#btnSaveEscalation").addEventListener("click", function () {
+      const remarks = $("#pkEscalationText").value.trim();
+      if (!remarks) { showToast("Write a remark before escalating.", "error"); return; }
+      API.post("setEscalation", { token: STATE.token, phaseKhataId: PKModal.currentId, remarks: remarks })
+        .then(function () {
+          showToast("Escalation saved.", "success");
+          return DATA.loadBootstrap();
+        })
+        .then(function () { Router.render(); PKModal.render(); })
+        .catch(function (err) { showToast(err.message || "Could not save escalation", "error"); });
+    });
+
+    const delBtn = $("#btnDeleteEscalation");
+    if (delBtn) delBtn.addEventListener("click", function () {
+      confirmDialog("Clear this escalation?", "This removes the remark from the admin dashboard.", "Clear").then(function (ok) {
+        if (!ok) return;
+        API.post("deleteEscalation", { token: STATE.token, phaseKhataId: PKModal.currentId })
+          .then(function () {
+            showToast("Escalation cleared.", "success");
+            return DATA.loadBootstrap();
+          })
+          .then(function () { Router.render(); PKModal.render(); })
+          .catch(function (err) { showToast(err.message || "Could not clear escalation", "error"); });
+      });
+    });
+  },
+};
+
+function wirePhaseSystem() {
+  $("#btnCancelCreatePhase").addEventListener("click", PhaseModal.close);
+  $("#btnConfirmCreatePhase").addEventListener("click", PhaseModal.create);
+
+  $("#btnCancelEnlist").addEventListener("click", EnlistModal.close);
+  $("#btnConfirmEnlist").addEventListener("click", EnlistModal.submit);
+  $("#enlistSearchInput").addEventListener("input", debounce(function (e) { EnlistModal.renderList(e.target.value); }, 150));
+}
+
+/* ============================================================
    PAGES - RT / KHATA DETAIL
    ============================================================ */
 PAGES.khataDetail = function (khataId) {
@@ -1072,6 +1610,7 @@ PAGES.khataDetail = function (khataId) {
   const trees = k.trees ? Object.keys(k.trees).map(function (id) { return Object.assign({ id: id }, k.trees[id]); }) : [];
   const docs = DATA.documentsForKhata(khataId);
   const status = (k.metadata || {}).status || "On record";
+  const khataPhaseViews = DATA.khataPhaseEntries(khataId).map(DATA.pkView);
 
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks/' + k.blockId + '">' + escapeHtml(block.blockName || "Block") + '</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Khata ' + escapeHtml(k.khataNumber) + "</div>" +
@@ -1079,7 +1618,7 @@ PAGES.khataDetail = function (khataId) {
     '<div class="rt-hero"><div><h1>' + escapeHtml(k.rtName || "Unnamed RT") + '</h1><div class="sub">Khata ' + escapeHtml(k.khataNumber) + " &middot; " + escapeHtml(k.rtId || "&mdash;") + " &middot; " + escapeHtml(block.blockName || "") + "</div></div>" +
     '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structures.length + '</b><span>Structures</span></div><div class="stat"><b>' + trees.length + '</b><span>Tree records</span></div></div></div>' +
 
-    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docs.length + ')</button>' +
+    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docs.length + ')</button>' +
     (STATE.isAdmin ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
@@ -1087,7 +1626,18 @@ PAGES.khataDetail = function (khataId) {
     PAGES.defItem("Village", loc.village) +
     PAGES.defItem("Block", block.blockName) + PAGES.defItem("District", loc.district) + PAGES.defItem("Status", status) +
     PAGES.defItem("Documentation", PAGES.isDocComplete(khataId) ? "Completed" : "Incomplete") +
-    "</div></div><div class=\"card\"><div class=\"section-title\">Land</div><div class=\"deflist\">" +
+    "</div></div>" +
+
+    '<div class="card mb-16"><div class="section-title">Phase progress</div>' +
+    (khataPhaseViews.length ? khataPhaseViews.map(function (v) {
+      const phase = STATE.phases[v.phaseId] || {};
+      return '<div class="sub-item-card" data-nav="#/phases/' + v.phaseId + '" style="cursor:pointer;"><div><div class="name">' + escapeHtml(phase.name || "Phase") + '</div><div class="details">' + escapeHtml(v.stageLabel) + (v.hasEscalation ? ' &middot; Escalated' : '') + '</div></div><span class="badge ' + (v.hasEscalation ? "badge-rose" : (v.stageIndex === 4 ? "badge-green" : "badge-amber")) + '">' + escapeHtml(v.stageLabel) + '</span></div>';
+    }).join("") : emptyState("icon-flag", "Not enlisted in any phase", "Enlist this khata into a phase to begin tracking notice, documents, verification and compensation.")) +
+    '</div>' +
+
+    "</div>" +
+
+    '<div class="tabpanel" data-panel="land"><div class="card"><div class="section-title">Land</div><div class="deflist">' +
     PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
     "</div></div></div>" +
 
@@ -1147,7 +1697,7 @@ PAGES.documentChecklistHtml = function (khataId, docs) {
     "</div>";
 };
 
-   PAGES.documentsTabHtml = function (khataId, docs) {
+PAGES.documentsTabHtml = function (khataId, docs) {
   return (
     PAGES.documentChecklistHtml(khataId, docs) +
     '<div class="card mb-16"><div class="section-title">Upload a document</div>' +
@@ -1216,11 +1766,10 @@ const UPLOAD = {
     UPLOAD.compress(file).then(function (dataUrl) {
       const bar = $("#" + rowId + " .bar i"); if (bar) bar.style.width = "70%";
       return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: dataUrl }).then(function () { return dataUrl; });
-    }).then(function (dataUrl) {
+    }).then(function () {
       showToast("Document uploaded.", "success");
       const el = $("#" + rowId); if (el) el.remove();
-      Router.render(); // reflect the new doc; bootstrap is stale until next load, so refetch it
-      DATA.loadBootstrap().then(Router.render);
+      DATA.loadBootstrap().then(Router.render); // reflect the new doc; bootstrap is stale until next load, so refetch it
     }).catch(function (err) {
       console.error(err); showToast(err.message || ("Could not upload " + file.name), "error");
       const el = $("#" + rowId); if (el) el.remove();
@@ -1283,7 +1832,7 @@ const ZIPDOWNLOAD = {
    send all rows to the backend in one request.
    ============================================================ */
 const IMPORT = {
-    parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedUpdateRows: [],
+  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedUpdateRows: [],
   REQUIRED_COLUMNS: ["blockName", "khataNumber", "rtName"],
   TEMPLATE_COLUMNS: ["blockName", "blockCode", "village", "district", "khataNumber", "rtName", "acquiredLandAcres", "landCategory", "landAmount", "structureAmount", "treeAmount", "exGratia", "status"],
   STRUCTURE_COLUMNS: ["blockName", "khataNumber", "type", "area", "condition", "usage", "remarks"],
@@ -1326,7 +1875,7 @@ const IMPORT = {
     reader.readAsArrayBuffer(file);
   },
 
-    validateAndPreview: function (rows, structureRows, treeRows, updateRows) {
+  validateAndPreview: function (rows, structureRows, treeRows, updateRows) {
     updateRows = updateRows || [];
     const missingCols = IMPORT.REQUIRED_COLUMNS.filter(function (c) { return rows.length && !(c in rows[0]); });
     const host = $("#importPreview");
@@ -1355,7 +1904,7 @@ const IMPORT = {
     $("#btnConfirmImport").addEventListener("click", IMPORT.submit);
   },
 
-    submit: function () {
+  submit: function () {
     if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedUpdateRows.length) return;
     const btn = $("#btnConfirmImport");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Importing&hellip;</span>';
@@ -1413,6 +1962,8 @@ function loadThumbnails(scopeSelector) {
 }
 
 PAGES.afterKhataDetail = function (khataId) {
+  $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
+
   $all(".tab-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
       $all(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
@@ -1516,17 +2067,52 @@ const CompModal = {
 PAGES.adminAnalytics = function () {
   const k = DATA.blockKPIs();
   const compTotal = DATA.totalCompensation();
+  const pkViews = DATA.allPhaseKhataViews();
+  const escalated = pkViews.filter(function (v) { return v.hasEscalation; });
+
+  const enlistedIdSet = DATA.allEnlistedKhataIds();
+  const enlistedCount = Object.keys(enlistedIdSet).length;
+  const notEnlistedCount = Math.max(0, (k.totalKhatas || 0) - enlistedCount);
+
+  const noticeServedCount = pkViews.filter(function (v) { return v.noticeServed; }).length;
+  const docsCollectedCount = pkViews.filter(function (v) { return v.docsCollected; }).length;
+  const documentsVerifiedCount = pkViews.filter(function (v) { return v.documentsVerified; }).length;
+  const compensationReceivedCount = pkViews.filter(function (v) { return v.compensationReceived; }).length;
+  const disbursedTotal = DATA.disbursedCompensationTotal();
+
   const kpis = [
     { icon: "icon-map", label: "Blocks", value: k.totalBlocks || 0, grad: "var(--brand-grad)" },
     { icon: "icon-file-text", label: "Khatas", value: k.totalKhatas || 0, grad: "linear-gradient(135deg,#7C3AED,#A855F7)" },
+    { icon: "icon-list-plus", label: "Khatas added to phases", value: enlistedCount, grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
+    { icon: "icon-list-x", label: "Khatas remaining", value: notEnlistedCount, grad: "linear-gradient(135deg,#94A3B8,#64748B)" },
     { icon: "icon-ruler", label: "Total land", value: fmtAcres(k.totalLandAcres), grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
     { icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" },
+    { icon: "icon-wallet", label: "Compensation disbursed", value: fmtINR(disbursedTotal), grad: "linear-gradient(135deg,#059669,#10B981)" },
+    { icon: "icon-bell-ring", label: "Notice served", value: noticeServedCount, grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
+    { icon: "icon-folder-check", label: "Documents collected", value: docsCollectedCount, grad: "linear-gradient(135deg,#7C3AED,#A855F7)" },
+    { icon: "icon-badge-check", label: "Documents verified", value: documentsVerifiedCount, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
+    { icon: "icon-check-circle", label: "Compensation received", value: compensationReceivedCount, grad: "linear-gradient(135deg,#10B981,#059669)" },
   ];
+
   return (
-    '<div class="page-head"><div><h1>Analytics</h1><p>Compensation, land and record insights across every block.</p></div></div>' +
+    '<div class="page-head"><div><h1>Analytics</h1><p>Compensation, land, phase pipeline and escalation insights across every block.</p></div></div>' +
     '<div class="kpi-grid mb-16">' + kpis.map(function (c) {
       return '<div class="kpi-card"><div class="accentbar" style="background:' + c.grad + '"></div><div class="kpi-icon" style="background:' + c.grad + '"><i class="' + c.icon + ' i"></i></div><div class="kpi-value">' + c.value + '</div><div class="kpi-label">' + c.label + "</div></div>";
     }).join("") + "</div>" +
+
+    '<div class="card mb-16"><div class="section-title">Open escalations <span class="muted">' + escalated.length + '</span></div>' +
+    (escalated.length ? escalated.map(function (v) {
+      const phase = STATE.phases[v.phaseId] || {};
+      const esc = v.pk.escalation || {};
+      return '<div class="sub-item-card" data-nav="#/phases/' + v.phaseId + '" style="cursor:pointer;"><div><div class="name">' + escapeHtml(v.khata.rtName || "Unnamed RT") + ' &middot; Khata ' + escapeHtml(v.khata.khataNumber || "") + '</div><div class="details">' + escapeHtml(phase.name || "") + ' &middot; ' + escapeHtml(esc.remarks || "") + '</div></div><span class="badge badge-rose">' + fmtDate(esc.updatedAt) + '</span></div>';
+    }).join("") : emptyState("icon-check-circle", "No open escalations", "Escalated khatas will show up here for follow-up.")) +
+    '</div>' +
+
+    '<div class="chart-grid mb-16">' +
+    '<div class="chart-card"><div class="section-title">Khata pipeline by phase</div><canvas id="chartPhasePipeline"></canvas></div>' +
+    '<div class="chart-card"><div class="section-title">Overall pipeline stage</div><canvas id="chartStageDist"></canvas></div>' +
+    '</div>' +
+
     '<div class="chart-grid">' +
     '<div class="chart-card"><div class="section-title">Khata count by block</div><canvas id="chartByBlock"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Compensation by block</div><canvas id="chartCompByBlock"></canvas></div>' +
@@ -1541,6 +2127,8 @@ PAGES.afterAdminAnalytics = function () {
   Object.keys(STATE.charts).forEach(function (k) { STATE.charts[k].destroy(); });
   STATE.charts = {};
 
+  $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
+
   const blockIds = Object.keys(STATE.blocks);
   const blockNames = blockIds.map(function (id) { return STATE.blocks[id].blockName; });
   const khataCounts = blockIds.map(function (id) { return DATA.khatasForBlock(id).length; });
@@ -1548,6 +2136,45 @@ PAGES.afterAdminAnalytics = function () {
     return DATA.khatasForBlock(id).reduce(function (sum, k) { const c = STATE.compensation[k.id]; return sum + (c ? Number(c.totalAmount || 0) : 0); }, 0);
   });
   const palette = ["#4338CA", "#2563EB", "#0891B2", "#7C3AED", "#D97706", "#059669", "#DB2777"];
+
+  /* ---- Phase pipeline (stacked-style grouped bar) ---- */
+  const phases = DATA.phaseList();
+  const phaseNames = phases.map(function (p) { return p.name; });
+  const noticeData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.noticeServed; }).length; });
+  const docsData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return PAGES.isDocComplete(pk.khataId); }).length; });
+  const verifiedData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.documentsVerified; }).length; });
+  const paidData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.compensationReceived; }).length; });
+
+  const ctxPP = $("#chartPhasePipeline");
+  if (ctxPP && phases.length) {
+    STATE.charts.phasePipeline = new Chart(ctxPP, {
+      type: "bar",
+      data: {
+        labels: phaseNames,
+        datasets: [
+          { label: "Notice served", data: noticeData, backgroundColor: "#4338CA", borderRadius: 5 },
+          { label: "Documents collected", data: docsData, backgroundColor: "#7C3AED", borderRadius: 5 },
+          { label: "Documents verified", data: verifiedData, backgroundColor: "#0891B2", borderRadius: 5 },
+          { label: "Compensation received", data: paidData, backgroundColor: "#10B981", borderRadius: 5 },
+        ],
+      },
+      options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 10.5 } } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
+  } else if (ctxPP) { ctxPP.parentElement.innerHTML = emptyState("icon-bar-chart-3", "No phases yet", "Create a phase and enlist khatas to see this chart."); }
+
+  /* ---- Overall pipeline stage distribution ---- */
+  const pkViews = DATA.allPhaseKhataViews();
+  const stageLabels = ["Enlisted", "In progress", "Ready for verification", "Documents verified", "Compensation received"];
+  const stageCounts = [0, 0, 0, 0, 0];
+  pkViews.forEach(function (v) { stageCounts[v.stageIndex]++; });
+  const ctxSD = $("#chartStageDist");
+  if (ctxSD && pkViews.length) {
+    STATE.charts.stageDist = new Chart(ctxSD, {
+      type: "doughnut",
+      data: { labels: stageLabels, datasets: [{ data: stageCounts, backgroundColor: ["#94A3B8", "#F59E0B", "#0891B2", "#7C3AED", "#10B981"] }] },
+      options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 10.5 } } } } },
+    });
+  } else if (ctxSD) { ctxSD.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Enlist khatas into a phase to see the pipeline breakdown."); }
 
   const ctx1 = $("#chartByBlock");
   if (ctx1 && blockIds.length) {
@@ -1651,7 +2278,7 @@ PAGES.afterAdminRecords = function () {
    PAGES - ADMIN: AUDIT LOG
    ============================================================ */
 PAGES.adminAudit = function () {
-  return '<div class="page-head"><div><h1>Audit log</h1><p>A running record of administrative actions.</p></div></div><div class="card" id="auditLogHost">' + skeletonCards(1) + "</div>";
+  return '<div class="page-head"><div><h1>Audit log</h1><p>A running record of administrative and field actions - including phase, notice, verification and escalation events.</p></div></div><div class="card" id="auditLogHost">' + skeletonCards(1) + "</div>";
 };
 
 PAGES.afterAdminAudit = function () {
@@ -1745,6 +2372,7 @@ function boot() {
   wireCompModal();
   wireLightbox();
   wirePWA();
+  wirePhaseSystem();
   SEARCH.wire();
   AUTH.restoreSession();
   UI.applyRoleToChrome();
