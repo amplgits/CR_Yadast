@@ -723,9 +723,12 @@ function emptyState(icon, title, message, actionHtml) {
    ============================================================ */
 const API = {
   get: function (action, params) {
-    const qs = new URLSearchParams(Object.assign({ action: action }, params || {}));
+    // _ts busts any browser/CDN caching of the GET URL, which can
+    // otherwise keep serving a stale/broken response after a
+    // redeploy.
+    const qs = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
     return fetch(CONFIG.apiUrl + "?" + qs.toString())
-      .then(function (r) { return r.json(); })
+      .then(API.parseResponse)
       .then(API.unwrap);
   },
 
@@ -734,8 +737,31 @@ const API = {
       method: "POST",
       body: JSON.stringify(Object.assign({ action: action }, payload || {})),
     })
-      .then(function (r) { return r.json(); })
+      .then(API.parseResponse)
       .then(API.unwrap);
+  },
+
+  // Reads the response as text first and only then tries to parse it
+  // as JSON. If the backend (or Google's Apps Script redirect layer)
+  // returns an HTML error page instead of JSON - e.g. a stale/broken
+  // deployment - this throws a clear, readable error instead of the
+  // cryptic "Unexpected token '<'" crash.
+  parseResponse: function (r) {
+    return r.text().then(function (text) {
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        const err = new Error(
+          "The server sent back an unexpected response instead of data. " +
+          "This usually means the Apps Script deployment needs to be redeployed " +
+          "(Deploy \u2192 Manage deployments \u2192 Edit \u2192 New version)."
+        );
+        err.code = "BAD_RESPONSE";
+        throw err;
+      }
+      return json;
+    });
   },
 
   unwrap: function (json) {
