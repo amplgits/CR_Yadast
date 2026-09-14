@@ -4,7 +4,7 @@
 // Apps Script backend - we never cache those, so the app never shows
 // stale records.
 
-const CACHE_NAME = "rtcms-shell-v1";
+const CACHE_NAME = "rtcms-shell-v2";
 const SHELL_FILES = ["./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -19,6 +19,11 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first for the app shell: always try to fetch the latest
+// index.html/manifest/icons from the server first, and only fall back
+// to the cached copy if the network is unavailable (offline). This is
+// what was causing edits to not show up - the old code served the
+// cached file first and never checked the network at all.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
@@ -28,5 +33,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
+});
+
+// Lets the page force this waiting service worker to activate
+// immediately (see the "controllerchange" handling in index.html).
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });

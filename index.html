@@ -1218,7 +1218,6 @@ PAGES.khatasList = function () {
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
     '<div class="page-head"><div><h1>All Khata records</h1><p>' + khatas.length + " record(s) across every block.</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
-    PAGES.docFilterTabsHtml(khatas.length, docCompleteCount, docIncompleteCount) +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
@@ -2468,7 +2467,38 @@ function wireLightbox() {
    ============================================================ */
 function wirePWA() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(function (err) { console.warn("SW registration failed:", err); });
+    navigator.serviceWorker.register("./sw.js").then(function (reg) {
+      // If a new service worker is already waiting (installed while this
+      // tab was open), activate it immediately instead of waiting for
+      // every tab to close.
+      if (reg.waiting) { reg.waiting.postMessage({ type: "SKIP_WAITING" }); }
+
+      // Whenever a new service worker finishes installing, tell it to
+      // activate right away rather than sitting "waiting".
+      reg.addEventListener("updatefound", function () {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", function () {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            newWorker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+
+      // Ask the browser to check for a newer sw.js/index.html every time
+      // the app is opened, instead of relying on its own (slow) schedule.
+      reg.update();
+    }).catch(function (err) { console.warn("SW registration failed:", err); });
+
+    // Once the new service worker takes control, reload once so the
+    // page picks up the freshly cached index.html instead of the stale
+    // one already loaded in memory.
+    let refreshedOnce = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (refreshedOnce) return;
+      refreshedOnce = true;
+      window.location.reload();
+    });
   }
   let deferredPrompt = null;
   window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredPrompt = e; $("#installBanner").classList.add("show"); });
