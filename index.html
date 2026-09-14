@@ -349,7 +349,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .modal h2{font-size:18px;margin-bottom:4px;}
 .modal .modal-sub{font-size:12.8px;color:var(--ink-soft);margin-bottom:18px;}
 .field{margin-bottom:14px;}
-.field label{display:block;font-size:12.3px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;}
+.field label{display:block;font-size:12.3px;font-weight:700;color: white;margin-bottom:6px;}
 .field input,.field select,.field textarea{
   width:100%;height:42px;border-radius:9px;border:1.5px solid var(--border);padding:0 12px;
   font-family:inherit;font-size:14px;color:var(--ink);transition:border-color .15s;
@@ -622,6 +622,8 @@ const STATE = {
   khataStatusFilter: "all",
   khataDocFilter: "all",
   phaseKhataFilter: "all",
+  khataSearchQuery: "",
+  khataSortBy: "khataNumberAsc",
 };
 
 /* ============================================================
@@ -651,6 +653,31 @@ function fmtDate(ts) {
   if (!ts) return "&mdash;";
   return new Date(ts).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
+
+function yesterdayISO() {
+  const d = new Date(Date.now() - 86400000);
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+/** Converts an ISO date (YYYY-MM-DD, the only format <input type="date">
+ * accepts as its value) to the DD-MM-YYYY format we store/display. */
+function isoToDMY(iso) {
+  const parts = String(iso || "").split("-");
+  if (parts.length !== 3) return iso || "";
+  return parts[2] + "-" + parts[1] + "-" + parts[0];
+}
+
+/** Converts a stored DD-MM-YYYY date back to ISO so it can be placed
+ * into an <input type="date">'s value attribute. */
+function dmyToISO(dmy) {
+  const parts = String(dmy || "").split("-");
+  if (parts.length !== 3) return dmy || "";
+  return parts[2] + "-" + parts[1] + "-" + parts[0];
+}
+
+function yesterdayDMY() { return isoToDMY(yesterdayISO()); }
+
 
 function daysOpen(ts) {
   if (!ts) return "&mdash;";
@@ -827,6 +854,23 @@ const DATA = {
     });
   },
 
+  /** Silent reconciliation: re-fetches bootstrap and re-renders without
+   * ever showing a loading state - the optimistic local update already
+   * put the right thing on screen, this just settles any drift (server-
+   * assigned ids, other users' concurrent edits) a moment later. */
+  refreshQuietly: function () {
+    return API.get("bootstrap").then(function (data) {
+      STATE.blocks = data.blocks || {};
+      STATE.khatas = data.khatas || {};
+      STATE.documents = data.documents || {};
+      STATE.phases = data.phases || {};
+      STATE.phaseKhatas = data.phaseKhatas || {};
+      STATE.stats = data.stats || {};
+      SEARCH.rebuildIndex();
+      Router.render();
+    }).catch(function () {}); // best-effort; the optimistic state stays as the fallback
+  },
+
   loadCompensationIfAdmin: function () {
     if (!STATE.isAdmin) { STATE.compensation = {}; return Promise.resolve(); }
     return API.get("compensation", { token: STATE.token }).then(function (data) {
@@ -850,6 +894,10 @@ const DATA = {
       STATE.documentThumbnails[docId] = data.thumbData;
       return data.thumbData;
     });
+  },
+
+  getNoticeDocument: function (phaseKhataId) {
+    return API.get("noticeDocument", { id: phaseKhataId });
   },
 
   khataList: function () {
@@ -1188,6 +1236,76 @@ PAGES.docFilterTabsHtml = function (allCount, completeCount, incompleteCount) {
     "</div>";
 };
 
+PAGES.searchKhatas = function (khatas, query) {
+  query = (query || "").trim().toLowerCase();
+  if (!query) return khatas;
+  // Khata-Number-only match (this filter bar no longer searches RT name/block).
+  return khatas.filter(function (k) {
+    return String(k.khataNumber || "").toLowerCase().indexOf(query) !== -1;
+  });
+};
+
+PAGES.SORT_OPTIONS = [
+  { value: "khataNumberAsc", label: "Khata No. (Low to High)" },
+  { value: "khataNumberDesc", label: "Khata No. (High to Low)" },
+  { value: "rtNameAsc", label: "RT Name (A-Z)" },
+  { value: "rtNameDesc", label: "RT Name (Z-A)" },
+  { value: "landDesc", label: "Land (High to Low)" },
+  { value: "landAsc", label: "Land (Low to High)" },
+];
+
+PAGES.sortKhatas = function (khatas, sortBy) {
+  const list = khatas.slice();
+  const numOf = function (k) {
+    const n = parseFloat(String(k.khataNumber || "").replace(/[^0-9.]/g, ""));
+    return isNaN(n) ? Infinity : n;
+  };
+  switch (sortBy) {
+    case "khataNumberDesc":
+      list.sort(function (a, b) { return numOf(b) - numOf(a) || String(a.khataNumber || "").localeCompare(String(b.khataNumber || "")); });
+      break;
+    case "rtNameAsc":
+      list.sort(function (a, b) { return String(a.rtName || "").localeCompare(String(b.rtName || "")); });
+      break;
+    case "rtNameDesc":
+      list.sort(function (a, b) { return String(b.rtName || "").localeCompare(String(a.rtName || "")); });
+      break;
+    case "landDesc":
+      list.sort(function (a, b) { return (((b.land || {}).acquiredLandAcres) || 0) - (((a.land || {}).acquiredLandAcres) || 0); });
+      break;
+    case "landAsc":
+      list.sort(function (a, b) { return (((a.land || {}).acquiredLandAcres) || 0) - (((b.land || {}).acquiredLandAcres) || 0); });
+      break;
+    case "khataNumberAsc":
+    default:
+      list.sort(function (a, b) { return numOf(a) - numOf(b) || String(a.khataNumber || "").localeCompare(String(b.khataNumber || "")); });
+      break;
+  }
+  return list;
+};
+
+PAGES.khataFilterBarHtml = function (khatas) {
+  const q = escapeHtml(STATE.khataSearchQuery || "");
+
+  // Unique khata numbers available in this context (block or all-khatas),
+  // sorted numerically so the dropdown list reads in a sane order.
+  const numOf = function (n) {
+    const num = parseFloat(String(n || "").replace(/[^0-9.]/g, ""));
+    return isNaN(num) ? Infinity : num;
+  };
+  const khataNumbers = Array.from(new Set((khatas || []).map(function (k) { return k.khataNumber; }).filter(Boolean)))
+    .sort(function (a, b) { return numOf(a) - numOf(b) || String(a).localeCompare(String(b)); });
+
+  return '<div class="flex gap-8 mt-8" style="flex-wrap:wrap;align-items:center;">' +
+    '<div class="field" style="width:130px;margin-bottom:0;">' +
+    '<input type="text" id="khataFilterInput" list="khataNumberDatalist" placeholder="Khata No." value="' + q + '" autocomplete="off">' +
+    '<datalist id="khataNumberDatalist">' + khataNumbers.map(function (n) { return '<option value="' + escapeHtml(n) + '">'; }).join("") + '</datalist>' +
+    '</div>' +
+    '<div class="field" style="width:220px;margin-bottom:0;"><select id="khataSortSelect">' +
+    PAGES.SORT_OPTIONS.map(function (o) { return '<option value="' + o.value + '"' + (STATE.khataSortBy === o.value ? " selected" : "") + '>' + escapeHtml(o.label) + "</option>"; }).join("") +
+    "</select></div></div>";
+};
+
 PAGES.khataCardsHtml = function (khatas, opts) {
   opts = opts || {};
   if (!khatas.length) return emptyState("icon-file-search", "No Khata records found", opts.emptyMsg || "We couldn't find any Khata matching your search.");
@@ -1215,13 +1333,16 @@ PAGES.blockDetail = function (blockId) {
   const khatas = DATA.khatasForBlock(blockId);
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
-  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
+  let filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
+  filtered = PAGES.searchKhatas(filtered, STATE.khataSearchQuery);
+  filtered = PAGES.sortKhatas(filtered, STATE.khataSortBy);
   const loc = block.location || {};
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks">Blocks</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(block.blockName) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(block.blockName) + "</h1><p>" + escapeHtml(block.blockCode || "") + " &middot; " + escapeHtml(loc.village || "") + ", " + escapeHtml(loc.district || "") + "</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
-    '<div class="section-title">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
+    PAGES.khataFilterBarHtml(khatas) +
+    '<div class="section-title mt-16">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
@@ -1236,11 +1357,15 @@ PAGES.khatasList = function () {
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
   const docCompleteCount = PAGES.filterKhatasByDoc(khatas, "complete").length;
   const docIncompleteCount = PAGES.filterKhatasByDoc(khatas, "incomplete").length;
-  const filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
+  let filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
+  filtered = PAGES.searchKhatas(filtered, STATE.khataSearchQuery);
+  filtered = PAGES.sortKhatas(filtered, STATE.khataSortBy);
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
     '<div class="page-head"><div><h1>All Khata records</h1><p>' + khatas.length + " record(s) across every block.</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.khataFilterBarHtml(khatas) +
+    '<div class="mt-16"></div>' +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
 };
@@ -1259,6 +1384,25 @@ PAGES.afterEntityGrid = function () {
       Router.render();
     });
   });
+
+  const khataFilterInput = $("#khataFilterInput");
+  if (khataFilterInput) {
+    khataFilterInput.addEventListener("input", debounce(function (e) {
+      const caret = e.target.selectionStart;
+      STATE.khataSearchQuery = e.target.value;
+      Router.render();
+      const refocused = $("#khataFilterInput");
+      if (refocused) { refocused.focus(); refocused.setSelectionRange(caret, caret); }
+    }, 250));
+  }
+
+  const khataSortSelect = $("#khataSortSelect");
+  if (khataSortSelect) {
+    khataSortSelect.addEventListener("change", function (e) {
+      STATE.khataSortBy = e.target.value;
+      Router.render();
+    });
+  }
 };
 
 /* ============================================================
@@ -1315,13 +1459,22 @@ PAGES.afterPhasesList = function () {
         "Delete"
       ).then(function (ok) {
         if (!ok) return;
+        const removedPhase = STATE.phases[phaseId];
+        const removedPKs = {};
+        Object.keys(STATE.phaseKhatas).forEach(function (id) {
+          if (STATE.phaseKhatas[id].phaseId === phaseId) { removedPKs[id] = STATE.phaseKhatas[id]; delete STATE.phaseKhatas[id]; }
+        });
+        delete STATE.phases[phaseId];
+        Router.render();
+        showToast(phaseName + " deleted.", "success");
         API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
-          .then(function () {
-            showToast(phaseName + " deleted.", "success");
-            return DATA.loadBootstrap();
-          })
-          .then(function () { Router.render(); })
-          .catch(function (err) { showToast(err.message || "Could not delete phase", "error"); });
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            STATE.phases[phaseId] = removedPhase;
+            Object.keys(removedPKs).forEach(function (id) { STATE.phaseKhatas[id] = removedPKs[id]; });
+            Router.render();
+            showToast(err.message || "Could not delete phase", "error");
+          });
       });
     });
   });
@@ -1424,14 +1577,23 @@ PAGES.afterPhaseDetail = function (phaseId) {
       "Delete"
     ).then(function (ok) {
       if (!ok) return;
+      const removedPhase = STATE.phases[phaseId];
+      const removedPKs = {};
+      Object.keys(STATE.phaseKhatas).forEach(function (id) {
+        if (STATE.phaseKhatas[id].phaseId === phaseId) { removedPKs[id] = STATE.phaseKhatas[id]; delete STATE.phaseKhatas[id]; }
+      });
+      delete STATE.phases[phaseId];
+      location.hash = "#/phases";
+      Router.render();
+      showToast(phaseName + " deleted.", "success");
       API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
-        .then(function () {
-          showToast(phaseName + " deleted.", "success");
-          location.hash = "#/phases";
-          return DATA.loadBootstrap();
-        })
-        .then(function () { Router.render(); })
-        .catch(function (err) { showToast(err.message || "Could not delete phase", "error"); });
+        .then(function () { DATA.refreshQuietly(); })
+        .catch(function (err) {
+          STATE.phases[phaseId] = removedPhase;
+          Object.keys(removedPKs).forEach(function (id) { STATE.phaseKhatas[id] = removedPKs[id]; });
+          Router.render();
+          showToast(err.message || "Could not delete phase", "error");
+        });
     });
   });
 };
@@ -1446,12 +1608,12 @@ const PhaseModal = {
     const btn = $("#btnConfirmCreatePhase");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Creating&hellip;</span>';
     API.post("createPhase", { token: STATE.token }).then(function (data) {
-      return DATA.loadBootstrap().then(function () { return data; });
-    }).then(function (data) {
+      STATE.phases[data.phaseId] = { name: data.name, order: Object.keys(STATE.phases).length + 1, createdAt: Date.now(), createdBy: STATE.adminId || "Public User" };
       PhaseModal.close();
       showToast(data.name + " created.", "success");
       location.hash = "#/phases/" + data.phaseId;
       Router.render();
+      DATA.refreshQuietly();
     }).catch(function (err) {
       showToast(err.message || "Could not create phase", "error");
     }).finally(function () {
@@ -1486,6 +1648,14 @@ const EnlistModal = {
       const blockName = (STATE.blocks[k.blockId] || {}).blockName || "";
       return (k.rtName + " " + k.khataNumber + " " + blockName).toLowerCase().indexOf(q) !== -1;
     });
+    // Sort by Khata Number (numeric-aware) so the list always reads in order.
+    const numOf = function (n) {
+      const num = parseFloat(String(n || "").replace(/[^0-9.]/g, ""));
+      return isNaN(num) ? Infinity : num;
+    };
+    list.sort(function (a, b) {
+      return numOf(a.khataNumber) - numOf(b.khataNumber) || String(a.khataNumber || "").localeCompare(String(b.khataNumber || ""));
+    });
     if (!list.length) {
       host.innerHTML = emptyState("icon-file-search", "No khatas available", "All matching khatas are already enlisted in this phase.");
       EnlistModal.updateCount();
@@ -1517,12 +1687,25 @@ const EnlistModal = {
     if (!ids.length) { showToast("Select at least one khata.", "error"); return; }
     const btn = $("#btnConfirmEnlist");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Enlisting&hellip;</span>';
-    API.post("enlistKhatas", { token: STATE.token, phaseId: EnlistModal.phaseId, khataIds: ids }).then(function (data) {
-      showToast((data.added || ids.length) + " khata(s) enlisted.", "success");
-      EnlistModal.close();
-      return DATA.loadBootstrap();
-    }).then(function () { Router.render(); })
-      .catch(function (err) { showToast(err.message || "Could not enlist khatas", "error"); })
+    const phaseId = EnlistModal.phaseId;
+    const actor = STATE.adminId || "Public User";
+    ids.forEach(function (khataId) {
+      STATE.phaseKhatas["temp_" + khataId] = {
+        phaseId: phaseId, khataId: khataId, noticeServed: false,
+        documentsVerified: false, compensationReceived: false,
+        enlistedAt: Date.now(), enlistedBy: actor,
+      };
+    });
+    EnlistModal.close();
+    Router.render();
+    showToast(ids.length + " khata(s) enlisted.", "success");
+    API.post("enlistKhatas", { token: STATE.token, phaseId: phaseId, khataIds: ids })
+      .then(function () { DATA.refreshQuietly(); })
+      .catch(function (err) {
+        ids.forEach(function (khataId) { delete STATE.phaseKhatas["temp_" + khataId]; });
+        Router.render();
+        showToast(err.message || "Could not enlist khatas", "error");
+      })
       .finally(function () { btn.disabled = false; btn.innerHTML = '<i class="icon-check i"></i><span>Enlist selected</span>'; });
   },
 };
@@ -1548,11 +1731,32 @@ const PKModal = {
     const khataId = pk.khataId;
     const readyForVerify = v.noticeServed && v.docsCollected;
 
+    const noticeDoc = pk.noticeDocument || null;
+    // Stored/displayed as DD-MM-YYYY; the date input itself needs ISO for its value attribute.
+    const noticeDateDMY = noticeDoc && noticeDoc.noticeDate ? noticeDoc.noticeDate : yesterdayDMY();
+    const noticeDateISO = noticeDoc && noticeDoc.noticeDate ? dmyToISO(noticeDoc.noticeDate) : yesterdayISO();
+
     let html = '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
       '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
       '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.block.blockName || "") + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
 
-      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + '><label for="pkNotice">Notice served</label></div>' +
+      '<div class="field"><label>Notice document</label>' +
+      '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
+      (noticeDoc
+        ? '<span class="badge badge-green"><i class="icon-file-check i"></i>' + escapeHtml(noticeDoc.fileName || "Notice uploaded") + '</span>' +
+          '<button class="btn btn-ghost btn-sm" id="btnViewNoticeDoc"><i class="icon-eye i"></i>View</button>' +
+          '<label class="btn btn-ghost btn-sm"><i class="icon-upload i"></i><span>Replace</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>'
+        : '<label class="btn btn-primary btn-sm"><i class="icon-upload i"></i><span>Upload notice (image/PDF)</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>') +
+      '</div>' +
+      (!noticeDoc ? '<span class="text-sm text-mute" style="display:block;margin-top:6px;">Required before &ldquo;Notice served&rdquo; can be checked.</span>' : '') +
+      '</div>' +
+
+      '<div class="field"><label>Notice date</label>' +
+      '<input type="date" id="noticeDateInput" value="' + escapeHtml(noticeDateISO) + '">' +
+      '<span class="text-sm text-mute" id="noticeDateDisplay" style="display:block;margin-top:6px;">' + escapeHtml(noticeDateDMY) + '</span>' +
+      '</div>' +
+
+      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + (!noticeDoc ? " disabled" : "") + '><label for="pkNotice">Notice served' + (!noticeDoc ? '<span class="hint">Upload the notice document above first</span>' : '') + '</label></div>' +
 
       '<div class="field"><label>Documents collected</label>' +
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
@@ -1595,77 +1799,170 @@ const PKModal = {
     const goDocs = $("#pkGoDocs");
     if (goDocs) goDocs.addEventListener("click", PKModal.close);
 
+    const noticeDocInput = $("#noticeDocInput");
+    if (noticeDocInput) noticeDocInput.addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const isPdf = file.type === "application/pdf";
+      const isImage = /^image\//.test(file.type);
+      if (!isPdf && !isImage) { showToast("Notice must be an image or a PDF.", "error"); e.target.value = ""; return; }
+      const isoVal = ($("#noticeDateInput") || {}).value || yesterdayISO();
+      const noticeDate = isoToDMY(isoVal);
+
+      const finishUpload = function (base64Data) {
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        const prevDoc = pk.noticeDocument;
+        pk.noticeDocument = { fileName: file.name, mimeType: file.type, noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.adminId || "Public User" };
+        Router.render(); PKModal.render();
+        showToast("Notice document uploaded.", "success");
+        API.post("setNoticeDocument", {
+          phaseKhataId: pkId, fileName: file.name, mimeType: file.type,
+          base64Data: base64Data, noticeDate: noticeDate,
+        }).then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            pk.noticeDocument = prevDoc;
+            Router.render(); PKModal.render();
+            showToast(err.message || "Could not upload notice document", "error");
+          });
+      };
+
+      if (isImage) {
+        UPLOAD.compress(file).then(function (variants) { finishUpload(variants.full); })
+          .catch(function () { showToast("Could not read that image.", "error"); });
+      } else {
+        const reader = new FileReader();
+        reader.onload = function () { finishUpload(reader.result); };
+        reader.onerror = function () { showToast("Could not read that file.", "error"); };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    const noticeDateInput = $("#noticeDateInput");
+    if (noticeDateInput) noticeDateInput.addEventListener("change", function (e) {
+      const dmy = isoToDMY(e.target.value);
+      const display = $("#noticeDateDisplay");
+      if (display) display.textContent = dmy;
+
+      const pkId = PKModal.currentId;
+      const pkNow = STATE.phaseKhatas[pkId];
+      if (!pkNow || !pkNow.noticeDocument) return; // no document yet - date is just staged for the upcoming upload
+      const prevDate = pkNow.noticeDocument.noticeDate;
+      pkNow.noticeDocument.noticeDate = dmy;
+      showToast("Notice date updated.", "success");
+      API.post("updateNoticeDate", { phaseKhataId: pkId, noticeDate: dmy })
+        .then(function () { DATA.refreshQuietly(); })
+        .catch(function (err) {
+          pkNow.noticeDocument.noticeDate = prevDate;
+          Router.render();
+          showToast(err.message || "Could not update notice date", "error");
+        });
+    });
+
+    const viewNoticeBtn = $("#btnViewNoticeDoc");
+    if (viewNoticeBtn) viewNoticeBtn.addEventListener("click", function () {
+      DATA.getNoticeDocument(PKModal.currentId).then(function (doc) {
+        if (doc.mimeType === "application/pdf") {
+          const win = window.open();
+          win.document.write('<iframe src="' + doc.base64Data + '" style="border:none;width:100%;height:100vh;"></iframe>');
+        } else {
+          $("#lbImage").src = doc.base64Data;
+          $("#lbMeta").innerHTML = "Notice document &middot; " + escapeHtml(doc.fileName || "");
+          $("#lightbox").classList.add("open");
+        }
+      }).catch(function () { showToast("Could not load the notice document.", "error"); });
+    });
+
     const noticeCb = $("#pkNotice");
     noticeCb.addEventListener("change", function () {
       const val = noticeCb.checked;
-      noticeCb.disabled = true;
-      API.post("setNoticeServed", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
-        .then(function () { return DATA.loadBootstrap(); })
-        .then(function () {
-          Router.render(); PKModal.render();
-          showToast(val ? "Notice marked as served." : "Notice mark removed.", "success");
-        })
+      const pkId = PKModal.currentId;
+      const pk = STATE.phaseKhatas[pkId];
+      const prev = pk.noticeServed;
+      pk.noticeServed = val;
+      Router.render(); PKModal.render();
+      showToast(val ? "Notice marked as served." : "Notice mark removed.", "success");
+      API.post("setNoticeServed", { token: STATE.token, phaseKhataId: pkId, value: val })
+        .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
+          pk.noticeServed = prev;
+          Router.render(); PKModal.render();
           showToast(err.message || "Could not update", "error");
-          PKModal.render();
         });
     });
 
     const verifiedCb = $("#pkVerified");
     if (verifiedCb) verifiedCb.addEventListener("change", function () {
       const val = verifiedCb.checked;
-      verifiedCb.disabled = true;
-      API.post("setDocumentsVerified", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
-        .then(function () { return DATA.loadBootstrap(); })
-        .then(function () {
-          Router.render(); PKModal.render();
-          showToast(val ? "Documents marked verified." : "Verification removed.", "success");
-        })
+      const pkId = PKModal.currentId;
+      const pk = STATE.phaseKhatas[pkId];
+      const prevVerified = pk.documentsVerified, prevPaid = pk.compensationReceived;
+      pk.documentsVerified = val;
+      if (!val) pk.compensationReceived = false; // mirrors the backend invariant
+      Router.render(); PKModal.render();
+      showToast(val ? "Documents marked verified." : "Verification removed.", "success");
+      API.post("setDocumentsVerified", { token: STATE.token, phaseKhataId: pkId, value: val })
+        .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
+          pk.documentsVerified = prevVerified; pk.compensationReceived = prevPaid;
+          Router.render(); PKModal.render();
           showToast(err.message || "Could not update", "error");
-          PKModal.render();
         });
     });
 
     const paidCb = $("#pkPaid");
     if (paidCb) paidCb.addEventListener("change", function () {
       const val = paidCb.checked;
-      paidCb.disabled = true;
-      API.post("setCompensationReceived", { token: STATE.token, phaseKhataId: PKModal.currentId, value: val })
-        .then(function () { return DATA.loadBootstrap(); })
-        .then(function () {
-          Router.render(); PKModal.render();
-          showToast(val ? "Compensation marked received." : "Compensation mark removed.", "success");
-        })
+      const pkId = PKModal.currentId;
+      const pk = STATE.phaseKhatas[pkId];
+      const prev = pk.compensationReceived;
+      pk.compensationReceived = val;
+      Router.render(); PKModal.render();
+      showToast(val ? "Compensation marked received." : "Compensation mark removed.", "success");
+      API.post("setCompensationReceived", { token: STATE.token, phaseKhataId: pkId, value: val })
+        .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
+          pk.compensationReceived = prev;
+          Router.render(); PKModal.render();
           showToast(err.message || "Could not update", "error");
-          PKModal.render();
         });
     });
 
     $("#btnSaveEscalation").addEventListener("click", function () {
       const remarks = $("#pkEscalationText").value.trim();
       if (!remarks) { showToast("Write a remark before escalating.", "error"); return; }
-      API.post("setEscalation", { token: STATE.token, phaseKhataId: PKModal.currentId, remarks: remarks })
-        .then(function () {
-          showToast("Escalation saved.", "success");
-          return DATA.loadBootstrap();
-        })
-        .then(function () { Router.render(); PKModal.render(); })
-        .catch(function (err) { showToast(err.message || "Could not save escalation", "error"); });
+      const pkId = PKModal.currentId;
+      const pk = STATE.phaseKhatas[pkId];
+      const prevEsc = pk.escalation;
+      pk.escalation = Object.assign({}, prevEsc, { remarks: remarks, updatedAt: Date.now(), updatedBy: STATE.adminId || "Public User" });
+      Router.render(); PKModal.render();
+      showToast("Escalation saved.", "success");
+      API.post("setEscalation", { token: STATE.token, phaseKhataId: pkId, remarks: remarks })
+        .then(function () { DATA.refreshQuietly(); })
+        .catch(function (err) {
+          pk.escalation = prevEsc;
+          Router.render(); PKModal.render();
+          showToast(err.message || "Could not save escalation", "error");
+        });
     });
 
     const delBtn = $("#btnDeleteEscalation");
     if (delBtn) delBtn.addEventListener("click", function () {
       confirmDialog("Clear this escalation?", "This removes the remark from the admin dashboard.", "Clear").then(function (ok) {
         if (!ok) return;
-        API.post("deleteEscalation", { token: STATE.token, phaseKhataId: PKModal.currentId })
-          .then(function () {
-            showToast("Escalation cleared.", "success");
-            return DATA.loadBootstrap();
-          })
-          .then(function () { Router.render(); PKModal.render(); })
-          .catch(function (err) { showToast(err.message || "Could not clear escalation", "error"); });
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        const prevEsc = pk.escalation;
+        delete pk.escalation;
+        Router.render(); PKModal.render();
+        showToast("Escalation cleared.", "success");
+        API.post("deleteEscalation", { token: STATE.token, phaseKhataId: pkId })
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            pk.escalation = prevEsc;
+            Router.render(); PKModal.render();
+            showToast(err.message || "Could not clear escalation", "error");
+          });
       });
     });
 
@@ -1678,14 +1975,18 @@ const PKModal = {
         "Remove"
       ).then(function (ok) {
         if (!ok) return;
+        const removed = STATE.phaseKhatas[pkIdToRemove];
+        delete STATE.phaseKhatas[pkIdToRemove];
+        PKModal.close();
+        Router.render();
+        showToast("Khata removed from phase.", "success");
         API.post("removeKhataFromPhase", { token: STATE.token, phaseKhataId: pkIdToRemove })
-          .then(function () {
-            showToast("Khata removed from phase.", "success");
-            PKModal.close();
-            return DATA.loadBootstrap();
-          })
-          .then(function () { Router.render(); })
-          .catch(function (err) { showToast(err.message || "Could not remove khata", "error"); });
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            if (removed) STATE.phaseKhatas[pkIdToRemove] = removed;
+            Router.render();
+            showToast(err.message || "Could not remove khata", "error");
+          });
       });
     });
   },
@@ -1788,40 +2089,39 @@ PAGES.compensationTabHtml = function (khataId) {
    bootstrap payload never carries image bytes).
    ============================================================ */
 PAGES.documentChecklistHtml = function (khataId, docs) {
-  const uploadedTypes = {};
-  docs.forEach(function (d) { uploadedTypes[d.documentType] = true; });
-  const completedCount = DOC_TYPES.filter(function (t) { return uploadedTypes[t]; }).length;
+  const uploadedByType = {};
+  docs.forEach(function (d) { (uploadedByType[d.documentType] = uploadedByType[d.documentType] || []).push(d); });
+  const completedCount = DOC_TYPES.filter(function (t) { return uploadedByType[t] && uploadedByType[t].length; }).length;
   const isComplete = docs.length > 0;
+
   const items = DOC_TYPES.map(function (t) {
-    const done = !!uploadedTypes[t];
-    return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(t) + "</div></div><span class=\"badge " + (done ? "badge-green" : "badge-amber") + '"><i class="' + (done ? "icon-check" : "icon-circle-alert") + ' i"></i> ' + (done ? "Uploaded" : "Pending") + "</span></div>";
+    const typeDocs = uploadedByType[t] || [];
+    const done = typeDocs.length > 0;
+    const safeType = escapeHtml(t);
+    const thumbsHtml = done
+      ? '<div class="doc-grid mt-8">' + typeDocs.map(function (d) {
+          return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div></div>';
+        }).join("") + '</div>'
+      : '';
+    return '<div class="sub-item-card" style="flex-direction:column;align-items:stretch;">' +
+      '<div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">' +
+      '<div class="name">' + safeType + '</div>' +
+      '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
+      '<span class="badge ' + (done ? "badge-green" : "badge-amber") + '"><i class="' + (done ? "icon-check" : "icon-circle-alert") + ' i"></i> ' + (done ? "Uploaded" : "Pending") + '</span>' +
+      '<label class="btn btn-ghost btn-sm"><i class="icon-image i"></i><span>Gallery</span><input type="file" accept="image/*" multiple data-doctype-input="gallery" data-doctype="' + safeType + '" style="display:none;"></label>' +
+      '<label class="btn btn-ghost btn-sm"><i class="icon-camera i"></i><span>Camera</span><input type="file" accept="image/*" capture="environment" data-doctype-input="camera" data-doctype="' + safeType + '" style="display:none;"></label>' +
+      '</div></div>' +
+      thumbsHtml +
+      '</div>';
   }).join("");
+
   return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + completedCount + "/" + DOC_TYPES.length + ' complete</span></div>' + items +
     (isComplete ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
     "</div>";
 };
 
 PAGES.documentsTabHtml = function (khataId, docs) {
-  return (
-    PAGES.documentChecklistHtml(khataId, docs) +
-    '<div class="card mb-16"><div class="section-title">Upload a document</div>' +
-    '<div class="dropzone" id="dropzone"><i class="icon-cloud-upload i"></i>' +
-    '<div style="font-weight:700;margin-top:8px;">Add RT, land or ID documents, or structure/tree photos</div>' +
-    '<div class="text-sm text-mute mt-8">Choose from your gallery, or use your camera on mobile.</div>' +
-    '<div class="upload-row" style="justify-content:center;">' +
-    '<label class="btn btn-primary btn-sm"><i class="icon-image i"></i><span>Choose photos</span><input type="file" accept="image/*" multiple id="fileInputGallery" style="display:none;"></label>' +
-    '<label class="btn btn-ghost btn-sm"><i class="icon-camera i"></i><span>Use camera</span><input type="file" accept="image/*" capture="environment" id="fileInputCamera" style="display:none;"></label>' +
-    '</div><div class="upload-row" id="uploadProgressRow"></div>' +
-    '<div class="field mt-16" style="max-width:260px;margin:16px auto 0;text-align:left;"><label>Document type</label>' +
-    '<select id="uploadDocType">' + DOC_TYPES.map(function (t) { return "<option>" + escapeHtml(t) + "</option>"; }).join("") + '</select></div>' +
-    "</div></div>" +
-
-    '<div class="card"><div class="section-title">Uploaded documents <span class="muted">' + docs.length + " file(s)</span></div>" +
-    (docs.length ? '<div class="doc-grid">' + docs.map(function (d) {
-      return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(d.documentType) + "</span></div>";
-    }).join("") + "</div>" : emptyState("icon-image-off", "No documents uploaded", "Photos and scans added for this Khata will appear here.")) +
-    "</div>"
-  );
+  return PAGES.documentChecklistHtml(khataId, docs);
 };
 
 /* ============================================================
@@ -1877,27 +2177,32 @@ const UPLOAD = {
   },
 
   uploadOne: function (khataId, file, docType) {
-    const rowId = "up_" + Math.random().toString(36).slice(2);
-    const row = $("#uploadProgressRow");
-    if (row) {
-      const el = document.createElement("div"); el.className = "upload-thumb"; el.id = rowId;
-      el.innerHTML = '<img src="" alt=""><div class="bar"><i style="width:30%"></i></div>';
-      row.appendChild(el);
-      const reader = new FileReader();
-      reader.onload = function () { const img = $("#" + rowId + " img"); if (img) img.src = reader.result; };
-      reader.readAsDataURL(file);
-    }
-
     UPLOAD.compress(file).then(function (variants) {
-      const bar = $("#" + rowId + " .bar i"); if (bar) bar.style.width = "70%";
-      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb });
-    }).then(function () {
-      showToast("Document uploaded.", "success");
-      const el = $("#" + rowId); if (el) el.remove();
-      DATA.loadBootstrap().then(Router.render); // reflect the new doc; bootstrap is stale until next load, so refetch it
+      const tempId = "tempdoc_" + Math.random().toString(36).slice(2);
+      // Optimistic: the document (and its real thumbnail) appears instantly,
+      // built from the compression we already did in the browser.
+      STATE.documents[tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "" };
+      STATE.documentThumbnails[tempId] = variants.thumb;
+      STATE.documentImages[tempId] = variants.full;
+      Router.render();
+
+      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb })
+        .then(function (data) {
+          delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
+          STATE.documents[data.documentId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "" };
+          STATE.documentThumbnails[data.documentId] = variants.thumb;
+          STATE.documentImages[data.documentId] = variants.full;
+          showToast("Document uploaded.", "success");
+          Router.render();
+          DATA.refreshQuietly();
+        })
+        .catch(function (err) {
+          delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
+          Router.render();
+          throw err;
+        });
     }).catch(function (err) {
       console.error(err); showToast(err.message || ("Could not upload " + file.name), "error");
-      const el = $("#" + rowId); if (el) el.remove();
     });
   },
 
@@ -1905,10 +2210,17 @@ const UPLOAD = {
     confirmDialog("Delete this document?", "This will permanently remove \u201c" + doc.fileName + "\u201d. This action cannot be easily undone.", "Delete")
       .then(function (ok) {
         if (!ok) return;
+        const removed = STATE.documents[doc.id];
+        delete STATE.documents[doc.id];
+        Router.render();
+        showToast("Document deleted.", "success");
         API.post("deleteDocument", { token: STATE.token, documentId: doc.id })
-          .then(function () { showToast("Document deleted.", "success"); return DATA.loadBootstrap(); })
-          .then(function () { Router.render(); })
-          .catch(function (err) { showToast(err.message || "Delete failed", "error"); });
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            if (removed) STATE.documents[doc.id] = removed;
+            Router.render();
+            showToast(err.message || "Delete failed", "error");
+          });
       });
   },
 };
@@ -2114,16 +2426,13 @@ PAGES.afterKhataDetail = function (khataId) {
     });
   });
 
-  const galleryInput = $("#fileInputGallery"), cameraInput = $("#fileInputCamera"), docTypeSel = $("#uploadDocType");
-  if (galleryInput) galleryInput.addEventListener("change", function (e) { UPLOAD.handleFiles(khataId, e.target.files, docTypeSel.value); e.target.value = ""; });
-  if (cameraInput) cameraInput.addEventListener("change", function (e) { UPLOAD.handleFiles(khataId, e.target.files, docTypeSel.value); e.target.value = ""; });
-
-  const dz = $("#dropzone");
-  if (dz) {
-    ["dragenter", "dragover"].forEach(function (evt) { dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.add("drag"); }); });
-    ["dragleave", "drop"].forEach(function (evt) { dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.remove("drag"); }); });
-    dz.addEventListener("drop", function (e) { if (e.dataTransfer.files.length) UPLOAD.handleFiles(khataId, e.dataTransfer.files, docTypeSel.value); });
-  }
+  $all("[data-doctype-input]").forEach(function (input) {
+    input.addEventListener("change", function (e) {
+      const docType = input.getAttribute("data-doctype");
+      UPLOAD.handleFiles(khataId, e.target.files, docType);
+      e.target.value = "";
+    });
+  });
 
   const editBtn = $("#btnEditComp");
   if (editBtn) editBtn.addEventListener("click", function () { CompModal.open(khataId); });
@@ -2178,20 +2487,26 @@ const CompModal = {
   },
   close: function () { $("#compEditModal").classList.remove("open"); },
   save: function () {
-    const payload = {
-      token: STATE.token, khataId: CompModal.currentKhataId,
-      landAmount: parseFloat($("#compLand").value) || 0,
-      structureAmount: parseFloat($("#compStructure").value) || 0,
-      treeAmount: parseFloat($("#compTree").value) || 0,
-      exGratia: parseFloat($("#compExGratia").value) || 0,
-      status: $("#compStatus").value,
-    };
-    API.post("addCompensation", payload).then(function () {
-      showToast("Compensation saved.", "success");
-      CompModal.close();
-      return DATA.loadCompensationIfAdmin();
-    }).then(function () { Router.render(); })
-      .catch(function (err) { showToast(err.message || "Save failed", "error"); });
+    const khataId = CompModal.currentKhataId;
+    const land = parseFloat($("#compLand").value) || 0;
+    const structure = parseFloat($("#compStructure").value) || 0;
+    const tree = parseFloat($("#compTree").value) || 0;
+    const exGratia = parseFloat($("#compExGratia").value) || 0;
+    const status = $("#compStatus").value;
+    const payload = { token: STATE.token, khataId: khataId, landAmount: land, structureAmount: structure, treeAmount: tree, exGratia: exGratia, status: status };
+
+    const prev = STATE.compensation[khataId];
+    STATE.compensation[khataId] = { landAmount: land, structureAmount: structure, treeAmount: tree, exGratia: exGratia, totalAmount: land + structure + tree + exGratia, status: status, lastUpdated: Date.now() };
+    CompModal.close();
+    Router.render();
+    showToast("Compensation saved.", "success");
+    API.post("addCompensation", payload)
+      .then(function () { DATA.refreshQuietly(); })
+      .catch(function (err) {
+        if (prev) STATE.compensation[khataId] = prev; else delete STATE.compensation[khataId];
+        Router.render();
+        showToast(err.message || "Save failed", "error");
+      });
   },
 };
 
@@ -2383,10 +2698,15 @@ PAGES.afterAdminRecords = function () {
     const name = $("#in_blockName").value.trim(), code = $("#in_blockCode").value.trim();
     PAGES.validateField("f_blockName", !!name); PAGES.validateField("f_blockCode", !!code);
     if (!name || !code) { showToast("Please fill in the required fields.", "error"); return; }
+    const village = $("#in_blockVillage").value.trim(), district = $("#in_blockDistrict").value.trim();
 
-    API.post("addBlock", { token: STATE.token, blockName: name, blockCode: code, village: $("#in_blockVillage").value.trim(), district: $("#in_blockDistrict").value.trim() })
-      .then(function () { showToast("Block added.", "success"); return DATA.loadBootstrap(); })
-      .then(function () { Router.render(); })
+    API.post("addBlock", { token: STATE.token, blockName: name, blockCode: code, village: village, district: district })
+      .then(function (data) {
+        STATE.blocks[data.blockId] = { blockName: name, blockCode: code, location: { village: village, district: district } };
+        showToast("Block added.", "success");
+        Router.render();
+        DATA.refreshQuietly();
+      })
       .catch(function (err) { showToast(err.message || "Could not add block", "error"); });
   });
 
@@ -2394,10 +2714,19 @@ PAGES.afterAdminRecords = function () {
     const blockId = $("#in_khataBlock").value, khataNumber = $("#in_khataNumber").value.trim(), rtName = $("#in_rtName").value.trim();
     PAGES.validateField("f_khataBlock", !!blockId); PAGES.validateField("f_khataNumber", !!khataNumber); PAGES.validateField("f_rtName", !!rtName);
     if (!blockId || !khataNumber || !rtName) { showToast("Please fill in the required fields.", "error"); return; }
+    const acres = parseFloat($("#in_land").value), landCategory = $("#in_landCat").value.trim();
 
-    API.post("addKhata", { token: STATE.token, blockId: blockId, khataNumber: khataNumber, rtName: rtName, acquiredLandAcres: parseFloat($("#in_land").value), landCategory: $("#in_landCat").value.trim() })
-      .then(function () { showToast("Khata added.", "success"); return DATA.loadBootstrap(); })
-      .then(function () { Router.render(); })
+    API.post("addKhata", { token: STATE.token, blockId: blockId, khataNumber: khataNumber, rtName: rtName, acquiredLandAcres: acres, landCategory: landCategory })
+      .then(function (data) {
+        STATE.khatas[data.khataId] = {
+          blockId: blockId, khataNumber: khataNumber, rtName: rtName,
+          land: { acquiredLandAcres: isNaN(acres) ? 0 : acres, landCategory: landCategory },
+          metadata: { status: "On record", createdAt: Date.now() },
+        };
+        showToast("Khata added.", "success");
+        Router.render();
+        DATA.refreshQuietly();
+      })
       .catch(function (err) { showToast(err.message || "Could not add khata", "error"); });
   });
 
