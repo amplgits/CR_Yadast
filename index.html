@@ -1215,15 +1215,12 @@ PAGES.blockDetail = function (blockId) {
   const khatas = DATA.khatasForBlock(blockId);
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
-  const docCompleteCount = PAGES.filterKhatasByDoc(khatas, "complete").length;
-  const docIncompleteCount = PAGES.filterKhatasByDoc(khatas, "incomplete").length;
-  const filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
+  const filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
   const loc = block.location || {};
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks">Blocks</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(block.blockName) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(block.blockName) + "</h1><p>" + escapeHtml(block.blockCode || "") + " &middot; " + escapeHtml(loc.village || "") + ", " + escapeHtml(loc.district || "") + "</p></div></div>" +
     PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
-    PAGES.docFilterTabsHtml(khatas.length, docCompleteCount, docIncompleteCount) +
     '<div class="section-title">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
   );
