@@ -1255,7 +1255,9 @@ PAGES.phaseCardHtml = function (p) {
   const verified = views.filter(function (v) { return v.documentsVerified; }).length;
   const paid = views.filter(function (v) { return v.compensationReceived; }).length;
   const escalated = views.filter(function (v) { return v.hasEscalation; }).length;
-  return '<div class="entity-card" data-nav="#/phases/' + p.id + '"><div class="eyebrow">PHASE</div><h3>' + escapeHtml(p.name) + '</h3>' +
+  return '<div class="entity-card" data-nav="#/phases/' + p.id + '" style="position:relative;">' +
+    (STATE.isAdmin ? '<button class="btn btn-ghost btn-sm" data-delete-phase="' + p.id + '" data-phase-name="' + escapeHtml(p.name) + '" style="position:absolute;top:12px;right:12px;padding:5px 8px;" title="Delete phase"><i class="icon-trash-2 i" style="color:var(--rose-1);"></i></button>' : '') +
+    '<div class="eyebrow">PHASE</div><h3>' + escapeHtml(p.name) + '</h3>' +
     '<div class="meta"><span><i class="icon-file-text i"></i>' + total + ' khata(s)</span><span><i class="icon-indian-rupee i"></i>' + paid + ' paid</span></div>' +
     '<div class="badge-row">' +
     '<span class="badge badge-brand">Notice ' + notice + '/' + total + '</span>' +
@@ -1270,6 +1272,28 @@ PAGES.afterPhasesList = function () {
   const btn = $("#btnCreatePhase"), btnEmpty = $("#btnCreatePhaseEmpty");
   if (btn) btn.addEventListener("click", PhaseModal.openCreate);
   if (btnEmpty) btnEmpty.addEventListener("click", PhaseModal.openCreate);
+
+  $all("[data-delete-phase]").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.stopPropagation(); // don't trigger the card's own data-nav click
+      const phaseId = el.getAttribute("data-delete-phase");
+      const phaseName = el.getAttribute("data-phase-name") || "this phase";
+      confirmDialog(
+        "Delete " + phaseName + "?",
+        "This permanently deletes the phase and every khata's notice/documents/verification/compensation progress within it. Khata records and uploaded documents themselves are not affected. This cannot be undone.",
+        "Delete"
+      ).then(function (ok) {
+        if (!ok) return;
+        API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
+          .then(function () {
+            showToast(phaseName + " deleted.", "success");
+            return DATA.loadBootstrap();
+          })
+          .then(function () { Router.render(); })
+          .catch(function (err) { showToast(err.message || "Could not delete phase", "error"); });
+      });
+    });
+  });
 };
 
 PAGES.phaseDetail = function (phaseId) {
@@ -1299,7 +1323,10 @@ PAGES.phaseDetail = function (phaseId) {
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/phases">Phases</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(phase.name) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(phase.name) + '</h1><p>' + total + ' khata(s) enlisted in this phase.</p></div>' +
-    '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button></div>' +
+    '<div class="flex gap-8">' +
+    (STATE.isAdmin ? '<button class="btn btn-danger btn-sm" id="btnDeletePhaseDetail"><i class="icon-trash-2 i"></i>Delete phase</button>' : '') +
+    '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button>' +
+    '</div></div>' +
 
     '<div class="kpi-grid mb-16">' +
     '<div class="kpi-card"><div class="accentbar" style="background:var(--brand-grad)"></div><div class="kpi-icon" style="background:var(--brand-grad)"><i class="icon-bell-ring i"></i></div><div class="kpi-value">' + counts.notice + '/' + total + '</div><div class="kpi-label">Notice served</div></div>' +
@@ -1355,6 +1382,27 @@ PAGES.afterPhaseDetail = function (phaseId) {
   });
   const btn = $("#btnEnlistKhata");
   if (btn) btn.addEventListener("click", function () { EnlistModal.open(phaseId); });
+
+  const delBtn = $("#btnDeletePhaseDetail");
+  if (delBtn) delBtn.addEventListener("click", function () {
+    const phase = STATE.phases[phaseId];
+    const phaseName = (phase && phase.name) || "this phase";
+    confirmDialog(
+      "Delete " + phaseName + "?",
+      "This permanently deletes the phase and every khata's notice/documents/verification/compensation progress within it. Khata records and uploaded documents themselves are not affected. This cannot be undone.",
+      "Delete"
+    ).then(function (ok) {
+      if (!ok) return;
+      API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
+        .then(function () {
+          showToast(phaseName + " deleted.", "success");
+          location.hash = "#/phases";
+          return DATA.loadBootstrap();
+        })
+        .then(function () { Router.render(); })
+        .catch(function (err) { showToast(err.message || "Could not delete phase", "error"); });
+    });
+  });
 };
 
 /* ============================================================
@@ -1500,6 +1548,11 @@ const PKModal = {
       '<button class="btn btn-primary btn-sm" id="btnSaveEscalation"><i class="icon-flag i"></i>' + (esc ? "Update remark" : "Escalate") + '</button>' +
       (esc ? '<button class="btn btn-danger btn-sm" id="btnDeleteEscalation"><i class="icon-trash-2 i"></i>Clear</button>' : '') +
       '</div>' +
+      (STATE.isAdmin
+        ? '<div class="btn-row" style="justify-content:flex-start;margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">' +
+          '<button class="btn btn-danger btn-sm" id="btnRemoveFromPhase"><i class="icon-x-circle i"></i>Remove from this phase</button>' +
+          '</div>'
+        : '') +
       '<div class="btn-row" style="margin-top:8px;"><button class="btn btn-ghost btn-sm" id="btnClosePk">Close</button></div>';
 
     $("#pkModalBody").innerHTML = html;
@@ -1582,6 +1635,26 @@ const PKModal = {
           })
           .then(function () { Router.render(); PKModal.render(); })
           .catch(function (err) { showToast(err.message || "Could not clear escalation", "error"); });
+      });
+    });
+
+    const removeBtn = $("#btnRemoveFromPhase");
+    if (removeBtn) removeBtn.addEventListener("click", function () {
+      const pkIdToRemove = PKModal.currentId;
+      confirmDialog(
+        "Remove this khata from the phase?",
+        "This deletes its notice/documents/verification/compensation progress for this phase only - the khata record itself, and any uploaded documents, are not affected. This cannot be undone.",
+        "Remove"
+      ).then(function (ok) {
+        if (!ok) return;
+        API.post("removeKhataFromPhase", { token: STATE.token, phaseKhataId: pkIdToRemove })
+          .then(function () {
+            showToast("Khata removed from phase.", "success");
+            PKModal.close();
+            return DATA.loadBootstrap();
+          })
+          .then(function () { Router.render(); })
+          .catch(function (err) { showToast(err.message || "Could not remove khata", "error"); });
       });
     });
   },
@@ -2018,7 +2091,9 @@ PAGES.documentsPage = function () {
     '<div class="page-head"><div><h1>Documents</h1><p>' + docs.length + " file(s) uploaded across all Khatas.</p></div></div>" +
     '<div class="card">' +
     (docs.length ? '<div class="doc-grid">' + docs.map(function (d) {
-      return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(d.documentType) + "</span></div>";
+      const khataNumber = (STATE.khatas[d.khataId] || {}).khataNumber || "";
+      const label = (khataNumber ? khataNumber + "_" : "") + d.documentType;
+      return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(label) + "</span></div>";
     }).join("") + "</div>" : emptyState("icon-image-off", "No documents yet", "Upload documents from any Khata's profile page.")) +
     "</div>"
   );
