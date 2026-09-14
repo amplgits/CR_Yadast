@@ -609,7 +609,8 @@ const STATE = {
   khatas: {},
   documents: {},
   compensation: {},
-  documentImages: {}, // docId -> base64 data URL, fetched on demand
+  documentImages: {}, // docId -> full-resolution base64 data URL, fetched on demand (lightbox, ZIP export only)
+  documentThumbnails: {}, // docId -> small base64 data URL, fetched on demand (grid/gallery views)
   phases: {},         // phaseId -> {name, order, createdAt, createdBy}
   phaseKhatas: {},    // pkId -> {phaseId, khataId, noticeServed, documentsVerified, compensationReceived, escalation, ...}
   isAdmin: false,
@@ -814,6 +815,14 @@ const DATA = {
     return API.get("documentImage", { id: docId }).then(function (data) {
       STATE.documentImages[docId] = data.imageData;
       return data.imageData;
+    });
+  },
+
+  getDocumentThumbnail: function (docId) {
+    if (STATE.documentThumbnails[docId]) return Promise.resolve(STATE.documentThumbnails[docId]);
+    return API.get("documentThumbnail", { id: docId }).then(function (data) {
+      STATE.documentThumbnails[docId] = data.thumbData;
+      return data.thumbData;
     });
   },
 
@@ -1798,20 +1807,41 @@ PAGES.documentsTabHtml = function (khataId, docs) {
    to the backend (no Firebase Storage in this architecture).
    ============================================================ */
 const UPLOAD = {
+  // Tunable in one place. Full images are still meant to be legible
+  // official records (Aadhar, PAN, land deeds); thumbnails only need
+  // to look right at ~100px in a grid tile, so they can be pushed
+  // much smaller/lower-quality without anyone noticing.
+  CONFIG: {
+    fullMaxEdge: 900, fullQuality: 0.55,
+    thumbMaxEdge: 220, thumbQuality: 0.45,
+  },
+
+  /** Loads the file once and derives BOTH a compressed full image and
+   * a much smaller thumbnail from the same decoded bitmap - avoids
+   * reading the file twice, and keeps the thumbnail generation free
+   * of an extra network round trip. */
   compress: function (file) {
     return new Promise(function (resolve, reject) {
-      const img = new Image(); const reader = new FileReader();
+      const reader = new FileReader();
       reader.onerror = reject;
-      reader.onload = function () { img.src = reader.result; };
-      img.onerror = reject;
-      img.onload = function () {
-        const maxEdge = 1000; // smaller than the Firebase-Storage version - this goes into the database as text
-        let w = img.width, h = img.height;
-        if (w > maxEdge || h > maxEdge) { const scale = maxEdge / Math.max(w, h); w = Math.round(w * scale); h = Math.round(h * scale); }
-        const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.65));
+      reader.onload = function () {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = function () {
+          const makeVariant = function (maxEdge, quality) {
+            let w = img.width, h = img.height;
+            if (w > maxEdge || h > maxEdge) { const scale = maxEdge / Math.max(w, h); w = Math.round(w * scale); h = Math.round(h * scale); }
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            return canvas.toDataURL("image/jpeg", quality);
+          };
+          resolve({
+            full: makeVariant(UPLOAD.CONFIG.fullMaxEdge, UPLOAD.CONFIG.fullQuality),
+            thumb: makeVariant(UPLOAD.CONFIG.thumbMaxEdge, UPLOAD.CONFIG.thumbQuality),
+          });
+        };
+        img.src = reader.result;
       };
       reader.readAsDataURL(file);
     });
@@ -1836,9 +1866,9 @@ const UPLOAD = {
       reader.readAsDataURL(file);
     }
 
-    UPLOAD.compress(file).then(function (dataUrl) {
+    UPLOAD.compress(file).then(function (variants) {
       const bar = $("#" + rowId + " .bar i"); if (bar) bar.style.width = "70%";
-      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: dataUrl }).then(function () { return dataUrl; });
+      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb });
     }).then(function () {
       showToast("Document uploaded.", "success");
       const el = $("#" + rowId); if (el) el.remove();
@@ -2031,7 +2061,7 @@ const Lightbox = {
 function loadThumbnails(scopeSelector) {
   $all((scopeSelector || "") + " .doc-thumb").forEach(function (el) {
     const docId = el.getAttribute("data-doc-id");
-    DATA.getDocumentImage(docId).then(function (dataUrl) {
+    DATA.getDocumentThumbnail(docId).then(function (dataUrl) {
       const skel = el.querySelector(".skel");
       if (skel) skel.outerHTML = '<img src="' + dataUrl + '" loading="lazy" alt="">';
     }).catch(function () {
