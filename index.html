@@ -1801,21 +1801,28 @@ const ZIPDOWNLOAD = {
 
     const zip = new JSZip();
     const khata = STATE.khatas[khataId] || {};
-    const folderName = (khata.khataNumber || khataId) + "";
+    const khataNumberSafe = ((khata.khataNumber || khataId) + "").replace(/[^a-z0-9]+/gi, "_");
 
+    // Track how many times each document type has been used so two
+    // uploads of the same type ("Bank Passbook", "Bank Passbook") don't
+    // collide and silently overwrite one another inside the ZIP.
+    const nameCounts = {};
     Promise.all(docs.map(function (d) {
       return DATA.getDocumentImage(d.id).then(function (dataUrl) {
         const base64 = dataUrl.split(",")[1];
         const ext = (dataUrl.match(/data:image\/(\w+);/) || [, "jpg"])[1];
-        const safeName = d.documentType.replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
-        zip.file(folderName + "/" + safeName + "_" + d.id.slice(0, 6) + "." + ext, base64, { base64: true });
+        const safeDocType = d.documentType.replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+        const baseName = khataNumberSafe + "_" + safeDocType;
+        const n = (nameCounts[baseName] = (nameCounts[baseName] || 0) + 1);
+        const fileName = (n > 1 ? baseName + "_" + n : baseName) + "." + ext;
+        zip.file(fileName, base64, { base64: true });
       });
     })).then(function () {
       return zip.generateAsync({ type: "blob" });
     }).then(function (blob) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = "Khata_" + folderName + "_Documents.zip";
+      a.href = url; a.download = khataNumberSafe + "_Documents.zip";
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
       showToast("ZIP downloaded.", "success");
