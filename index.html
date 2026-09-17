@@ -428,11 +428,13 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .field.has-toggle{position:relative;}
 .field.has-toggle input{padding-right:44px;}
 .field .toggle-pw{
-  position:absolute;right:1px;top:29px;width:40px;height:40px;
+  position:absolute;right:1px;top:29px;width:44px;height:42px;
   display:flex;align-items:center;justify-content:center;
   background:transparent;border:none;color:var(--ink-mute);cursor:pointer;
+  padding:0;
 }
 .field .toggle-pw:hover{color:var(--ink-soft);}
+.field .toggle-pw svg{width:20px;height:20px;display:block;pointer-events:none;}
 
 </style>
 </head>
@@ -463,7 +465,9 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <div class="field has-toggle" id="glFieldPassword">
       <label>Password</label>
       <input type="password" id="glPassword" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
-      <button type="button" class="toggle-pw" id="btnToggleGlPassword" tabindex="-1" aria-label="Show password"><i class="icon-eye i"></i></button>
+      <button type="button" class="toggle-pw" id="btnToggleGlPassword" tabindex="-1" aria-label="Show password">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
       <div class="error-msg">Enter your password.</div>
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnGateLogin">
@@ -3353,11 +3357,13 @@ const LoginGate = {
     $("#glUserId").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
     $("#glPassword").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
 
+    const EYE_OPEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
     const toggleBtn = $("#btnToggleGlPassword"), pwInput = $("#glPassword");
     toggleBtn.addEventListener("click", function () {
       const showing = pwInput.type === "text";
       pwInput.type = showing ? "password" : "text";
-      toggleBtn.innerHTML = showing ? '<i class="icon-eye i"></i>' : '<i class="icon-eye-off i"></i>';
+      toggleBtn.innerHTML = showing ? EYE_OPEN_SVG : EYE_OFF_SVG;
       toggleBtn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
     });
   },
