@@ -70,10 +70,14 @@ img{max-width:100%;display:block;}
 #splash .logo{width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,0.15);
   display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;margin-bottom:18px;
   border:1px solid rgba(255,255,255,0.3);}
-#splash .spin{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);
-  border-top-color:#fff;animation:spin .8s linear infinite;margin-top:22px;}
-@keyframes spin{to{transform:rotate(360deg);}}
-#splash .label{font-size:13.5px;opacity:.9;margin-top:4px;}
+#splash .breathe-wrap{position:relative;width:88px;height:88px;display:flex;align-items:center;justify-content:center;margin:6px 0;}
+#splash .breathe-ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(255,255,255,0.55);animation:breathe 2.4s ease-in-out infinite;}
+#splash .breathe-ring.r2{animation-delay:.6s;}
+#splash .breathe-ring.r3{animation-delay:1.2s;}
+#splash .breathe-core{width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 18px rgba(255,255,255,0.9);animation:corePulse 2.4s ease-in-out infinite;}
+@keyframes breathe{0%{transform:scale(0.4);opacity:0;}50%{opacity:.55;}100%{transform:scale(1);opacity:0;}}
+@keyframes corePulse{0%,100%{transform:scale(0.85);opacity:.8;}50%{transform:scale(1.15);opacity:1;}}
+#splash .label{font-size:13.5px;opacity:.9;margin-top:10px;transition:opacity .35s ease;min-height:18px;}
 
 /* ---------------- Layout shell ---------------- */
 #app{display:none;min-height:100vh;}
@@ -125,6 +129,8 @@ header.topbar{
 }
 .role-pill.user{background:var(--brand-grad-soft);color:var(--brand-1);}
 .role-pill.admin{background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:var(--money-1);}
+.role-pill.verifier{background:linear-gradient(135deg,#EFF6FF,#DBEAFE);color:#1D4ED8;}
+.role-pill.executor{background:linear-gradient(135deg,#FFF7ED,#FFEDD5);color:#C2410C;}
 
 /* ---------------- Sidebar (desktop) ---------------- */
 nav.sidebar{
@@ -158,6 +164,20 @@ main.content{
 .page-head p{color:var(--ink-soft);font-size:13.5px;margin-top:4px;}
 .breadcrumbs{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-mute);margin-bottom:10px;font-weight:600;}
 .breadcrumbs a:hover{color:var(--brand-1);}
+
+/* ---------------- Prominent "Back to phase" button (Executor) ---------------- */
+.back-to-phase-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  background:var(--brand-grad-soft);color:var(--brand-1);
+  font-size:13.5px;font-weight:700;
+  padding:9px 16px;border-radius:10px;
+  margin-bottom:14px;border:1.5px solid transparent;
+  transition:border-color .15s, box-shadow .15s, transform .12s;
+  box-shadow:var(--shadow-sm);
+}
+.back-to-phase-btn:hover{border-color:var(--brand-2);box-shadow:var(--shadow-md);}
+.back-to-phase-btn:active{transform:scale(0.97);}
+.back-to-phase-btn .i{font-size:15px;}
 
 /* ---------------- Mobile bottom nav ---------------- */
 nav.bottomnav{
@@ -349,7 +369,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .modal h2{font-size:18px;margin-bottom:4px;}
 .modal .modal-sub{font-size:12.8px;color:var(--ink-soft);margin-bottom:18px;}
 .field{margin-bottom:14px;}
-.field > label{display:block;font-size:12.3px;font-weight:700;color: white;margin-bottom:6px;}
+.field > label{display:block;font-size:12.3px;font-weight:700;color:var(--ink);margin-bottom:6px;}
 .field input,.field select,.field textarea{
   width:100%;height:42px;border-radius:9px;border:1.5px solid var(--border);padding:0 12px;
   font-family:inherit;font-size:14px;color:var(--ink);transition:border-color .15s;
@@ -389,18 +409,67 @@ nav.bottomnav a.active{color:var(--brand-2);}
 #installBanner.show{display:flex;animation:cardIn .3s ease;}
 @media (min-width:900px){ #installBanner{left:auto;right:24px;bottom:24px;width:320px;} }
 
+/* ---------------- Full-screen login gate ---------------- */
+#loginGate{position:fixed;inset:0;background:var(--bg);z-index:9000;display:none;align-items:center;justify-content:center;padding:20px;}
+#loginGate.show{display:flex;}
+.login-card{background:#fff;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:34px 30px;width:100%;max-width:380px;}
+.login-card .logo{width:56px;height:56px;border-radius:16px;background:var(--brand-grad);color:#fff;display:flex;
+  align-items:center;justify-content:center;font-weight:800;font-size:22px;margin:0 auto 16px;}
+.login-card h2{text-align:center;font-size:19px;}
+.login-card .modal-sub{text-align:center;margin-top:4px;}
+.disabled-note{background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--ink-soft);margin-bottom:14px;}
+
 /* Utility */
 .flex{display:flex;} .items-center{align-items:center;} .justify-between{justify-content:space-between;}
 .gap-8{gap:8px;} .gap-12{gap:12px;} .mt-8{margin-top:8px;} .mt-16{margin-top:16px;} .mb-16{margin-bottom:16px;}
 .text-mute{color:var(--ink-mute);} .text-sm{font-size:12.5px;} .hidden{display:none !important;}
+
+/* ---------------- Password field with show/hide toggle ---------------- */
+.field.has-toggle{position:relative;}
+.field.has-toggle input{padding-right:44px;}
+.field .toggle-pw{
+  position:absolute;right:1px;top:29px;width:40px;height:40px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;color:var(--ink-mute);cursor:pointer;
+}
+.field .toggle-pw:hover{color:var(--ink-soft);}
+
 </style>
 </head>
 <body>
 <div id="splash">
   <div class="logo">RT</div>
   <div style="font-size:15px;font-weight:700;">RT Compensation Management</div>
-  <div class="label">Connecting to database&hellip;</div>
-  <div class="spin"></div>
+  <div class="breathe-wrap">
+    <div class="breathe-ring r1"></div>
+    <div class="breathe-ring r2"></div>
+    <div class="breathe-ring r3"></div>
+    <div class="breathe-core"></div>
+  </div>
+  <div class="label" id="splashLabel">Connecting to database&hellip;</div>
+</div>
+
+<!-- ============ LOGIN GATE (shown for everyone until authenticated) ============ -->
+<div id="loginGate">
+  <div class="login-card">
+    <div class="logo">RT</div>
+    <h2>Sign in</h2>
+    <p class="modal-sub">Enter your User ID and password to continue.</p>
+    <div class="field" id="glFieldId">
+      <label>User ID</label>
+      <input type="text" id="glUserId" placeholder="e.g. EXE-001" autocomplete="username">
+      <div class="error-msg">Enter your User ID.</div>
+    </div>
+    <div class="field has-toggle" id="glFieldPassword">
+      <label>Password</label>
+      <input type="password" id="glPassword" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
+      <button type="button" class="toggle-pw" id="btnToggleGlPassword" tabindex="-1" aria-label="Show password"><i class="icon-eye i"></i></button>
+      <div class="error-msg">Enter your password.</div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnGateLogin">
+      <i class="icon-log-in i"></i><span>Sign in</span>
+    </button>
+  </div>
 </div>
 
 <div id="app">
@@ -421,30 +490,31 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
     <div class="topbar-actions">
       <span class="role-pill user" id="rolePill">Guest</span>
-      <button class="btn btn-ghost btn-sm" id="btnAdminLogin"><i class="icon-shield-check i"></i><span>Admin</span></button>
-      <button class="btn btn-ghost btn-sm hidden" id="btnAdminLogout"><i class="icon-log-out i"></i><span>Sign out</span></button>
+      <span id="userNameLabel" class="text-sm text-mute" style="margin-right:4px;"></span>
+      <button class="btn btn-ghost btn-sm" id="btnAdminLogout"><i class="icon-log-out i"></i><span>Sign out</span></button>
     </div>
   </header>
 
   <nav class="sidebar" id="sidebarNav">
     <div class="navgroup-label">Overview</div>
-    <a href="#/dashboard" class="navitem" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Dashboard</a>
-    <a href="#/phases" class="navitem" data-route="phases"><i class="icon-flag i"></i>Phases</a>
-    <a href="#/blocks" class="navitem" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
-    <a href="#/khatas" class="navitem" data-route="khatas"><i class="icon-file-text i"></i>All Khatas</a>
-    <a href="#/documents" class="navitem" data-route="documents"><i class="icon-folder i"></i>Documents</a>
+    <a href="#/dashboard" class="navitem role-nav-dashboard" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Dashboard</a>
+    <a href="#/phases" class="navitem role-nav-phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
+    <a href="#/blocks" class="navitem role-nav-blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
+    <a href="#/khatas" class="navitem role-nav-khatas" data-route="khatas"><i class="icon-file-text i"></i>All Khatas</a>
+    <a href="#/documents" class="navitem role-nav-documents" data-route="documents"><i class="icon-folder i"></i>Documents</a>
 
     <div class="navgroup-label admin-only hidden">Administration</div>
     <a href="#/admin/analytics" class="navitem admin-only hidden" data-route="analytics"><i class="icon-bar-chart-3 i"></i>Analytics</a>
     <a href="#/admin/records" class="navitem admin-only hidden" data-route="records"><i class="icon-database i"></i>Manage records</a>
+    <a href="#/admin/users" class="navitem strict-admin-only hidden" data-route="users"><i class="icon-users i"></i>Manage users</a>
     <a href="#/admin/audit" class="navitem admin-only hidden" data-route="audit"><i class="icon-history i"></i>Audit log</a>
   </nav>
 
   <nav class="bottomnav">
-    <a href="#/dashboard" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Home</a>
-    <a href="#/phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
-    <a href="#/blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
-    <a href="#/khatas" data-route="khatas"><i class="icon-file-text i"></i>Khatas</a>
+    <a href="#/dashboard" class="role-nav-dashboard" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Home</a>
+    <a href="#/phases" class="role-nav-phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
+    <a href="#/blocks" class="role-nav-blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
+    <a href="#/khatas" class="role-nav-khatas" data-route="khatas"><i class="icon-file-text i"></i>Khatas</a>
     <a href="#/admin/analytics" class="admin-only hidden" data-route="analytics"><i class="icon-bar-chart-3 i"></i>Admin</a>
   </nav>
 
@@ -462,30 +532,6 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <input type="text" id="mobileSearchInput" placeholder="Search RT, Khata, block, location&hellip;" autocomplete="off">
   </div>
   <div id="mobileSearchResults" style="margin-top:14px;"></div>
-</div>
-
-<div class="modal-backdrop" id="adminLoginModal">
-  <div class="modal">
-    <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-shield-check i"></i></div>
-    <h2>Admin portal</h2>
-    <p class="modal-sub">Sign in with your administrator credentials to view compensation data and manage records.</p>
-    <div class="field" id="fieldEmail">
-      <label>Admin ID</label>
-      <input type="text" id="loginEmail" placeholder="e.g. admin" autocomplete="username">
-      <div class="error-msg">Enter an admin ID.</div>
-    </div>
-    <div class="field" id="fieldPassword">
-      <label>Password</label>
-      <input type="password" id="loginPassword" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
-      <div class="error-msg">Enter your password.</div>
-    </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnDoLogin">
-      <i class="icon-log-in i"></i><span>Sign in</span>
-    </button>
-    <div class="btn-row" style="justify-content:center;margin-top:14px;">
-      <button class="btn btn-ghost btn-sm" id="btnCancelLogin">Cancel</button>
-    </div>
-  </div>
 </div>
 
 <div class="modal-backdrop" id="confirmModal">
@@ -529,9 +575,14 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <div class="field"><label>Ex-gratia (Rs., if DLC track)</label><input type="number" id="compExGratia" placeholder="0"></div>
     <div class="field"><label>Status</label>
       <select id="compStatus">
-        <option>On record</option><option>Notice Prepared</option><option>Notice Delivered</option>
-        <option>Documents Verified</option><option>Approved</option><option>Payment Processed</option>
+        <option value="CR Approved">CR Approved</option>
+        <option value="Blocked">Blocked</option>
       </select>
+    </div>
+    <div class="field" id="compBlockedReasonField" style="display:none;">
+      <label>Reason for blocking</label>
+      <textarea id="compBlockedReason" rows="3" placeholder="e.g. Structure/Tree/Dispute pending&hellip;"></textarea>
+      <div class="error-msg">Please provide a reason for blocking.</div>
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnSaveComp"><i class="icon-check i"></i><span>Save</span></button>
     <div class="btn-row" style="justify-content:center;margin-top:10px;">
@@ -590,16 +641,36 @@ nav.bottomnav a.active{color:var(--brand-2);}
   </div>
 </div>
 
+<!-- ============ USER MANAGEMENT MODAL (Admin only) ============ -->
+<div class="modal-backdrop" id="createUserModal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-user-plus i"></i></div>
+    <h2 id="createUserTitle">Create user</h2>
+    <p class="modal-sub">Stored in the Users Google Sheet. The User ID must be unique.</p>
+    <div class="field" id="cuFieldName"><label>User Name</label><input type="text" id="cuUserName" placeholder="e.g. Ramesh Nayak"><div class="error-msg">User name is required.</div></div>
+    <div class="field" id="cuFieldId"><label>User ID</label><input type="text" id="cuUserId" placeholder="e.g. EXE-001"><div class="error-msg">User ID is required and must be unique.</div></div>
+    <div class="field" id="cuFieldPassword"><label>Password</label><input type="text" id="cuPassword" placeholder="Set a password"><div class="error-msg">Password is required.</div></div>
+    <div class="field"><label>Role</label>
+      <select id="cuRole">
+        <option value="Executor">Executor</option>
+        <option value="Verifier">Verifier</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnConfirmCreateUser"><i class="icon-check i"></i><span>Save user</span></button>
+    <div class="btn-row" style="justify-content:center;margin-top:10px;">
+      <button class="btn btn-ghost btn-sm" id="btnCancelCreateUser">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
 /* ============================================================
    CONFIGURATION
-   The ONLY thing this frontend needs to know is where your Apps
-   Script Web App lives. No Firebase config here at all - the
-   browser never talks to Firebase directly. See SETUP.md.
    ============================================================ */
 const CONFIG = {
   apiUrl: "https://script.google.com/macros/s/AKfycbwGpQx2eG-CaMUmBllm1vR2PzOGbszb9umcSPo9T1SZmT4813tr9mhXsoXDpdI0kSfd3Q/exec", // ends in /exec
@@ -614,12 +685,6 @@ const DOC_TYPES = [
   "Revenue Ticket (5 nos)", "\u20B920/- Bond Paper", "Encumbrance Certificate", "Supporting Documents from 2 Witnesses"
 ];
 
-// These four are situational - only relevant if they apply to a given
-// khata (e.g. a sale deed only exists if there was a sale, an affidavit
-// only if there's a name discrepancy). Every other document type is
-// mandatory: until all of them have at least one upload, documentation
-// isn't complete, "Documents verified" can't be checked, and the record
-// won't advance anywhere on the dashboard.
 const OPTIONAL_DOC_TYPES = [
   "Sale Deed (If any)",
   "Death and Legal Hair Certificate ( wherever required)",
@@ -629,6 +694,27 @@ const OPTIONAL_DOC_TYPES = [
 const MANDATORY_DOC_TYPES = DOC_TYPES.filter(function (t) { return OPTIONAL_DOC_TYPES.indexOf(t) === -1; });
 
 /* ============================================================
+   ROLE MODEL
+   ------------------------------------------------------------
+   Three roles, one shared login:
+     Executor  - can ONLY see the Phases tab. Inside a phase-khata,
+                 can upload/replace the notice document and edit its
+                 date, and upload ordinary documents. Cannot tick any
+                 checkbox (Notice served / Verified / Paid), cannot
+                 create phases, cannot see Dashboard/Blocks/Khatas/
+                 Documents/Administration.
+     Verifier  - everything the Admin can do functionally (create
+                 phases, tick every checkbox, edit compensation,
+                 bulk import, add blocks/khatas) EXCEPT the
+                 Administration-only pages (Analytics, Manage
+                 records, Manage users, Audit log).
+     Admin     - everything, plus Administration (Analytics, Manage
+                 records, Manage users, Audit log) and the ability to
+                 create Executor/Verifier accounts.
+   ============================================================ */
+const ROLE = { EXECUTOR: "Executor", VERIFIER: "Verifier", ADMIN: "Admin" };
+
+/* ============================================================
    STATE
    ============================================================ */
 const STATE = {
@@ -636,13 +722,16 @@ const STATE = {
   khatas: {},
   documents: {},
   compensation: {},
-  documentImages: {}, // docId -> full-resolution base64 data URL, fetched on demand (lightbox, ZIP export only)
-  documentThumbnails: {}, // docId -> small base64 data URL, fetched on demand (grid/gallery views)
-  noticeDocuments: {}, // pkId -> {base64Data, mimeType, fileName}, fetched on demand and cached so re-opening "View" is instant
-  phases: {},         // phaseId -> {name, order, createdAt, createdBy}
-  phaseKhatas: {},    // pkId -> {phaseId, khataId, noticeServed, documentsVerified, compensationReceived, escalation, ...}
-  isAdmin: false,
-  adminId: null,
+  documentImages: {},
+  documentThumbnails: {},
+  noticeDocuments: {},
+  phases: {},
+  phaseKhatas: {},
+  users: {},          // only populated for Admin (Manage users page)
+  isAuthed: false,
+  role: null,          // ROLE.EXECUTOR | ROLE.VERIFIER | ROLE.ADMIN
+  userName: null,
+  userId: null,
   token: null,
   loaded: false,
   currentRoute: { name: "dashboard", params: {} },
@@ -652,6 +741,19 @@ const STATE = {
   phaseKhataFilter: "all",
   khataSearchQuery: "",
   khataSortBy: "khataNumberAsc",
+  executorReturnPhaseId: null,
+};
+
+/* Role capability helpers - single source of truth used everywhere
+   else in the app instead of scattering STATE.role checks around. */
+const CAN = {
+  // Full read/write of checkboxes, compensation, phase creation, etc.
+  fullControl: function () { return STATE.role === ROLE.VERIFIER || STATE.role === ROLE.ADMIN; },
+  // Administration-only pages (Analytics / Manage records / Manage users / Audit)
+  isAdminOnly: function () { return STATE.role === ROLE.ADMIN; },
+  // Executor is locked to the Phases area only
+  isExecutor: function () { return STATE.role === ROLE.EXECUTOR; },
+  canSeeCompensation: function () { return CAN.fullControl() || CAN.isAdminOnly(); },
 };
 
 /* ============================================================
@@ -682,22 +784,25 @@ function fmtDate(ts) {
   return new Date(ts).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function fmtDMY(ts) {
+  if (!ts) return "&mdash;";
+  const d = new Date(ts);
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear();
+}
+
 function yesterdayISO() {
   const d = new Date(Date.now() - 86400000);
   const pad = function (n) { return String(n).padStart(2, "0"); };
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
-/** Converts an ISO date (YYYY-MM-DD, the only format <input type="date">
- * accepts as its value) to the DD-MM-YYYY format we store/display. */
 function isoToDMY(iso) {
   const parts = String(iso || "").split("-");
   if (parts.length !== 3) return iso || "";
   return parts[2] + "-" + parts[1] + "-" + parts[0];
 }
 
-/** Converts a stored DD-MM-YYYY date back to ISO so it can be placed
- * into an <input type="date">'s value attribute. */
 function dmyToISO(dmy) {
   const parts = String(dmy || "").split("-");
   if (parts.length !== 3) return dmy || "";
@@ -705,7 +810,6 @@ function dmyToISO(dmy) {
 }
 
 function yesterdayDMY() { return isoToDMY(yesterdayISO()); }
-
 
 function daysOpen(ts) {
   if (!ts) return "&mdash;";
@@ -773,17 +877,9 @@ function emptyState(icon, title, message, actionHtml) {
 }
 
 /* ============================================================
-   API — the only way this app talks to data. Every call goes to
-   the single Apps Script Web App URL in CONFIG.apiUrl.
+   API
    ============================================================ */
 const API = {
-  // Google's Apps Script infrastructure occasionally answers a request
-  // with a transient, non-JSON response (the "macros/echo ... 404"
-  // errors you see in the console) - a brief backend hiccup, or a
-  // redeploy still propagating. It's not caused by anything wrong with
-  // this app and it isn't reproducible from a stale deployment alone,
-  // so instead of surfacing it to the user, we quietly retry a couple
-  // of times with a short backoff before giving up.
   MAX_RETRIES: 3,
   RETRY_DELAY_MS: 500,
 
@@ -791,9 +887,6 @@ const API = {
 
   get: function (action, params) {
     return API.requestWithRetry_(function () {
-      // _ts busts any browser/CDN caching of the GET URL, which can
-      // otherwise keep serving a stale/broken response after a
-      // redeploy.
       const qs = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
       return fetch(CONFIG.apiUrl + "?" + qs.toString());
     });
@@ -803,17 +896,11 @@ const API = {
     return API.requestWithRetry_(function () {
       return fetch(CONFIG.apiUrl, {
         method: "POST",
-        body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+        body: JSON.stringify(Object.assign({ action: action, token: STATE.token }, payload || {})),
       });
     });
   },
 
-  /** Runs the given fetch call, and if it fails for a transient reason
-   * (network error, or a non-JSON response from Google's infra), waits
-   * briefly and tries again before finally giving up and surfacing the
-   * error. Real application errors (success:false from our own backend)
-   * are never retried - only failures that look like infrastructure
-   * hiccups are. */
   requestWithRetry_: function (doFetch) {
     let attempt = 0;
     function tryOnce() {
@@ -831,11 +918,6 @@ const API = {
     return tryOnce().then(API.unwrap);
   },
 
-  // Reads the response as text first and only then tries to parse it
-  // as JSON. If the backend (or Google's Apps Script redirect layer)
-  // returns an HTML error page instead of JSON - e.g. a stale/broken
-  // deployment, or a transient infra hiccup - this throws a clear,
-  // readable error instead of the cryptic "Unexpected token '<'" crash.
   parseResponse: function (r) {
     return r.text().then(function (text) {
       let json;
@@ -865,47 +947,55 @@ const API = {
 };
 
 /* ============================================================
-   AUTH — a small admin allow-list on the backend, a session
-   token here. The token is kept in localStorage purely so a page
-   refresh doesn't sign the admin out; it is still validated by
-   the backend on every admin-only call.
+   AUTH — single shared login (Executor / Verifier / Admin).
+   Session token kept in localStorage so the user stays logged in
+   until they explicitly sign out (or the server-side session,
+   valid ~90 days, actually expires).
    ============================================================ */
 const AUTH = {
-  TOKEN_KEY: "rtcms_admin_token",
-  ADMINID_KEY: "rtcms_admin_id",
+  TOKEN_KEY: "rtcms_token",
+  ROLE_KEY: "rtcms_role",
+  NAME_KEY: "rtcms_name",
+  USERID_KEY: "rtcms_userid",
 
   restoreSession: function () {
     const token = localStorage.getItem(AUTH.TOKEN_KEY);
-    const adminId = localStorage.getItem(AUTH.ADMINID_KEY);
-    if (token) { STATE.token = token; STATE.adminId = adminId; STATE.isAdmin = true; }
+    const role = localStorage.getItem(AUTH.ROLE_KEY);
+    const name = localStorage.getItem(AUTH.NAME_KEY);
+    const userId = localStorage.getItem(AUTH.USERID_KEY);
+    if (token && role) {
+      STATE.token = token; STATE.role = role; STATE.userName = name; STATE.userId = userId;
+      STATE.isAuthed = true;
+    }
   },
 
-  login: function (adminId, password) {
-    return API.post("login", { adminId: adminId, password: password }).then(function (data) {
-      STATE.token = data.token; STATE.adminId = data.adminId; STATE.isAdmin = true;
+  login: function (userId, password) {
+    return API.post("login", { userId: userId, password: password }).then(function (data) {
+      STATE.token = data.token; STATE.role = data.role; STATE.userName = data.userName; STATE.userId = data.userId;
+      STATE.isAuthed = true;
       localStorage.setItem(AUTH.TOKEN_KEY, data.token);
-      localStorage.setItem(AUTH.ADMINID_KEY, data.adminId);
+      localStorage.setItem(AUTH.ROLE_KEY, data.role);
+      localStorage.setItem(AUTH.NAME_KEY, data.userName || "");
+      localStorage.setItem(AUTH.USERID_KEY, data.userId || "");
     });
   },
 
   logout: function () {
     const token = STATE.token;
-    STATE.token = null; STATE.adminId = null; STATE.isAdmin = false; STATE.compensation = {};
-    localStorage.removeItem(AUTH.TOKEN_KEY); localStorage.removeItem(AUTH.ADMINID_KEY);
+    STATE.token = null; STATE.role = null; STATE.userName = null; STATE.userId = null;
+    STATE.isAuthed = false; STATE.compensation = {}; STATE.users = {};
+    localStorage.removeItem(AUTH.TOKEN_KEY); localStorage.removeItem(AUTH.ROLE_KEY);
+    localStorage.removeItem(AUTH.NAME_KEY); localStorage.removeItem(AUTH.USERID_KEY);
     return API.post("logout", { token: token }).catch(function () {});
   },
 };
 
 /* ============================================================
    DATA LAYER
-   One bootstrap call loads everything a normal user can see.
-   Compensation is a second, admin-only call. Document images are
-   fetched per-document, on demand, since bootstrap deliberately
-   omits the (potentially large) base64 image data.
    ============================================================ */
 const DATA = {
   loadBootstrap: function () {
-    return API.get("bootstrap").then(function (data) {
+    return API.get("bootstrap", { token: STATE.token }).then(function (data) {
       STATE.blocks = data.blocks || {};
       STATE.khatas = data.khatas || {};
       STATE.documents = data.documents || {};
@@ -917,12 +1007,8 @@ const DATA = {
     });
   },
 
-  /** Silent reconciliation: re-fetches bootstrap and re-renders without
-   * ever showing a loading state - the optimistic local update already
-   * put the right thing on screen, this just settles any drift (server-
-   * assigned ids, other users' concurrent edits) a moment later. */
   refreshQuietly: function () {
-    return API.get("bootstrap").then(function (data) {
+    return API.get("bootstrap", { token: STATE.token }).then(function (data) {
       STATE.blocks = data.blocks || {};
       STATE.khatas = data.khatas || {};
       STATE.documents = data.documents || {};
@@ -931,16 +1017,21 @@ const DATA = {
       STATE.stats = data.stats || {};
       SEARCH.rebuildIndex();
       Router.render();
-    }).catch(function () {}); // best-effort; the optimistic state stays as the fallback
+    }).catch(function () {});
   },
 
-  loadCompensationIfAdmin: function () {
-    if (!STATE.isAdmin) { STATE.compensation = {}; return Promise.resolve(); }
+  loadCompensationIfAllowed: function () {
+    if (!CAN.canSeeCompensation()) { STATE.compensation = {}; return Promise.resolve(); }
     return API.get("compensation", { token: STATE.token }).then(function (data) {
       STATE.compensation = data || {};
     }).catch(function (err) {
-      if (err.code === "UNAUTHORIZED") { STATE.isAdmin = false; AUTH.logout(); }
+      if (err.code === "UNAUTHORIZED") { Router.forceLogout(); }
     });
+  },
+
+  loadUsersIfAdmin: function () {
+    if (!CAN.isAdminOnly()) { STATE.users = {}; return Promise.resolve(); }
+    return API.get("users", { token: STATE.token }).then(function (data) { STATE.users = data || {}; }).catch(function () {});
   },
 
   getDocumentImage: function (docId) {
@@ -989,16 +1080,6 @@ const DATA = {
     }, 0);
   },
 
-    totalCompensation: function () {
-    return Object.keys(STATE.compensation).reduce(function (sum, id) {
-      return sum + Number(STATE.compensation[id].totalAmount || 0);
-    }, 0);
-  },
-
-  /** Sum of compensation.totalAmount ONLY for khatas whose phase record
-   * has compensationReceived = true - i.e. money actually marked as
-   * paid out, not just entered/on-record. A khata is counted once even
-   * if (unusually) it's marked received in more than one phase. */
   disbursedCompensationTotal: function () {
     const paidKhataIds = {};
     DATA.allPhaseKhataViews().forEach(function (v) {
@@ -1010,15 +1091,11 @@ const DATA = {
     }, 0);
   },
 
-  /* ---------------- Phase system ---------------- */
-
   phaseList: function () {
     return Object.keys(STATE.phases).map(function (id) { return Object.assign({ id: id }, STATE.phases[id]); })
       .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
   },
 
-  /** The name shown everywhere: the admin's custom display name if one
-   * has been set, otherwise the backend's auto name (Phase-1, ...). */
   phaseDisplayName: function (phase) {
     return (phase && phase.displayName) || (phase && phase.name) || "Phase";
   },
@@ -1035,7 +1112,7 @@ const DATA = {
     return set;
   },
 
-    allEnlistedKhataIds: function () {
+  allEnlistedKhataIds: function () {
     const set = {};
     Object.keys(STATE.phaseKhatas).forEach(function (id) { set[STATE.phaseKhatas[id].khataId] = true; });
     return set;
@@ -1047,10 +1124,6 @@ const DATA = {
       .filter(function (pk) { return pk.khataId === khataId; });
   },
 
-  /** Computes the full display view for one phaseKhata record: which
-   * of the four steps are done, the overall stage, and whether an
-   * escalation is currently open. This is the single source of truth
-   * for "what step is this khata currently in". */
   pkView: function (pk) {
     const khata = STATE.khatas[pk.khataId] || {};
     const block = STATE.blocks[khata.blockId] || {};
@@ -1142,25 +1215,36 @@ const SEARCH = {
 };
 
 /* ============================================================
-   UI CHROME
+   UI CHROME - applies role to nav/chrome. Executor only ever sees
+   the Phases tab (everything else is hidden, not just disabled).
    ============================================================ */
 const UI = {
   applyRoleToChrome: function () {
-    const pill = $("#rolePill"), portalLabel = $("#portalLabel");
-    if (STATE.isAdmin) {
-      pill.textContent = "Admin (" + STATE.adminId + ")"; pill.className = "role-pill admin";
-      portalLabel.textContent = "ADMIN CONTROL CENTER";
-      $("#btnAdminLogin").classList.add("hidden"); $("#btnAdminLogout").classList.remove("hidden");
-    } else {
-      pill.textContent = "User"; pill.className = "role-pill user";
-      portalLabel.textContent = "PUBLIC PORTAL";
-      $("#btnAdminLogin").classList.remove("hidden"); $("#btnAdminLogout").classList.add("hidden");
-    }
-    $all(".admin-only").forEach(function (el) { el.classList.toggle("hidden", !STATE.isAdmin); });
-  },
+    const pill = $("#rolePill"), portalLabel = $("#portalLabel"), nameLabel = $("#userNameLabel");
+    nameLabel.textContent = STATE.userName ? (STATE.userName + " (" + STATE.userId + ")") : "";
 
-  setActiveNav: function (routeName) {
-    $all("[data-route]").forEach(function (el) { el.classList.toggle("active", el.getAttribute("data-route") === routeName); });
+    if (STATE.role === ROLE.ADMIN) {
+      pill.textContent = "Admin"; pill.className = "role-pill admin";
+      portalLabel.textContent = "ADMIN CONTROL CENTER";
+    } else if (STATE.role === ROLE.VERIFIER) {
+      pill.textContent = "Verifier"; pill.className = "role-pill verifier";
+      portalLabel.textContent = "VERIFIER PORTAL";
+    } else if (STATE.role === ROLE.EXECUTOR) {
+      pill.textContent = "Executor"; pill.className = "role-pill executor";
+      portalLabel.textContent = "EXECUTOR PORTAL";
+    } else {
+      pill.textContent = "Guest"; pill.className = "role-pill user";
+      portalLabel.textContent = "PUBLIC PORTAL";
+    }
+
+    $all(".admin-only").forEach(function (el) { el.classList.toggle("hidden", !CAN.isAdminOnly()); });
+    $all(".strict-admin-only").forEach(function (el) { el.classList.toggle("hidden", !CAN.isAdminOnly()); });
+
+    // Executor: hide every nav item except Phases.
+    const executorOnly = CAN.isExecutor();
+    ["dashboard", "blocks", "khatas", "documents"].forEach(function (r) {
+      $all(".role-nav-" + r).forEach(function (el) { el.classList.toggle("hidden", executorOnly); });
+    });
   },
 };
 
@@ -1168,7 +1252,8 @@ const UI = {
    ROUTER
    ============================================================ */
 const Router = {
-  ADMIN_ROUTES: ["analytics", "records", "audit"],
+  ADMIN_ROUTES: ["analytics", "records", "audit", "users"],
+  EXECUTOR_ALLOWED: ["phases", "phaseDetail", "khataDetail"],
 
   parse: function () {
     const hash = location.hash.replace(/^#\/?/, "");
@@ -1181,15 +1266,31 @@ const Router = {
     return { name: parts[0], params: {} };
   },
 
+  forceLogout: function () {
+    AUTH.logout().finally(function () {
+      UI.applyRoleToChrome();
+      LoginGate.show();
+    });
+  },
+
   render: function () {
-    const route = Router.parse();
-    if (Router.ADMIN_ROUTES.indexOf(route.name) !== -1 && !STATE.isAdmin) route.name = "dashboard";
+    let route = Router.parse();
+
+    // Admin-only pages are unreachable to anyone but Admin.
+    if (Router.ADMIN_ROUTES.indexOf(route.name) !== -1 && !CAN.isAdminOnly()) route.name = "dashboard";
+
+    // Executor is confined entirely to the Phases area.
+    if (CAN.isExecutor() && Router.EXECUTOR_ALLOWED.indexOf(route.name) === -1) {
+      route = { name: "phases", params: {} };
+      if (location.hash !== "#/phases") location.hash = "#/phases";
+    }
+
     STATE.currentRoute = route;
-    UI.setActiveNav(
-      route.name === "blockDetail" ? "blocks" :
-      route.name === "khataDetail" ? "khatas" :
-      route.name === "phaseDetail" ? "phases" : route.name
-    );
+    UI.setActiveNav = UI.setActiveNav || function () {};
+    $all("[data-route]").forEach(function (el) {
+      const r = route.name === "blockDetail" ? "blocks" : route.name === "khataDetail" ? "khatas" : route.name === "phaseDetail" ? "phases" : route.name;
+      el.classList.toggle("active", el.getAttribute("data-route") === r);
+    });
 
     const root = $("#pageRoot");
     switch (route.name) {
@@ -1203,6 +1304,7 @@ const Router = {
       case "documents": root.innerHTML = PAGES.documentsPage(); PAGES.afterDocumentsPage(); break;
       case "analytics": root.innerHTML = PAGES.adminAnalytics(); PAGES.afterAdminAnalytics(); break;
       case "records": root.innerHTML = PAGES.adminRecords(); PAGES.afterAdminRecords(); break;
+      case "users": root.innerHTML = PAGES.adminUsers(); PAGES.afterAdminUsers(); break;
       case "audit": root.innerHTML = PAGES.adminAudit(); PAGES.afterAdminAudit(); break;
       default: root.innerHTML = emptyState("icon-compass", "Page not found", "That route doesn't exist.");
     }
@@ -1210,6 +1312,8 @@ const Router = {
 
   init: function () {
     window.addEventListener("hashchange", Router.render);
+    // Executors land on Phases by default.
+    if (CAN.isExecutor() && !location.hash) location.hash = "#/phases";
     Router.render();
   },
 };
@@ -1222,7 +1326,7 @@ const PAGES = {};
 PAGES.dashboard = function () {
   if (!STATE.loaded) return skeletonCards(4);
   const k = DATA.blockKPIs();
-  const compTotal = STATE.isAdmin ? DATA.totalCompensation() : null;
+  const compTotal = CAN.canSeeCompensation() ? DATA.totalCompensation() : null;
 
   const enlistedIdSet = DATA.allEnlistedKhataIds();
   const enlistedCount = Object.keys(enlistedIdSet).length;
@@ -1236,7 +1340,7 @@ PAGES.dashboard = function () {
     { icon: "icon-users", label: "RT records", value: k.totalRTs || 0, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
     { icon: "icon-image", label: "Documents", value: k.totalDocuments || 0, grad: "linear-gradient(135deg,#D97706,#F59E0B)" },
   ];
-  if (STATE.isAdmin) {
+  if (CAN.canSeeCompensation()) {
     kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" });
     kpis.push({ icon: "icon-wallet", label: "Compensation disbursed", value: fmtINR(DATA.disbursedCompensationTotal()), grad: "linear-gradient(135deg,#059669,#10B981)" });
     kpis.push({ icon: "icon-check-circle", label: "Compensation received (khatas)", value: DATA.allPhaseKhataViews().filter(function (v) { return v.compensationReceived; }).length, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" });
@@ -1318,7 +1422,6 @@ PAGES.docFilterTabsHtml = function (allCount, completeCount, incompleteCount) {
 PAGES.searchKhatas = function (khatas, query) {
   query = (query || "").trim().toLowerCase();
   if (!query) return khatas;
-  // Khata-Number-only match (this filter bar no longer searches RT name/block).
   return khatas.filter(function (k) {
     return String(k.khataNumber || "").toLowerCase().indexOf(query) !== -1;
   });
@@ -1365,9 +1468,6 @@ PAGES.sortKhatas = function (khatas, sortBy) {
 
 PAGES.khataFilterBarHtml = function (khatas) {
   const q = escapeHtml(STATE.khataSearchQuery || "");
-
-  // Unique khata numbers available in this context (block or all-khatas),
-  // sorted numerically so the dropdown list reads in a sane order.
   const numOf = function (n) {
     const num = parseFloat(String(n || "").replace(/[^0-9.]/g, ""));
     return isNaN(num) ? Infinity : num;
@@ -1493,11 +1593,11 @@ PAGES.phasesList = function () {
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Phases</div>' +
     '<div class="page-head"><div><h1>Compensation Phases</h1><p>Track notice serving, document collection, verification and payment, phase by phase.</p></div>' +
-    '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button></div>' +
+    (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button>' : '') + '</div>' +
     (phases.length
       ? '<div class="grid-cards">' + phases.map(PAGES.phaseCardHtml).join("") + "</div>"
-      : emptyState("icon-flag", "No phases yet", "Create Phase-1 to begin enlisting Khatas for notice and document collection.",
-          '<button class="btn btn-primary btn-sm" id="btnCreatePhaseEmpty"><i class="icon-plus i"></i>Create phase</button>'))
+      : emptyState("icon-flag", "No phases yet", CAN.fullControl() ? "Create Phase-1 to begin enlisting Khatas for notice and document collection." : "No phases have been created yet.",
+          CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnCreatePhaseEmpty"><i class="icon-plus i"></i>Create phase</button>' : ''))
   );
 };
 
@@ -1510,14 +1610,14 @@ PAGES.phaseCardHtml = function (p) {
   const paid = views.filter(function (v) { return v.compensationReceived; }).length;
   const escalated = views.filter(function (v) { return v.hasEscalation; }).length;
   return '<div class="entity-card" data-nav="#/phases/' + p.id + '" style="position:relative;">' +
-    (STATE.isAdmin
+    (CAN.isAdminOnly()
       ? '<div style="position:absolute;top:12px;right:12px;display:flex;gap:6px;">' +
         '<button class="btn btn-ghost btn-sm" data-rename-phase="' + p.id + '" data-phase-internal-name="' + escapeHtml(p.name) + '" data-phase-display-name="' + escapeHtml(p.displayName || "") + '" style="padding:5px 8px;font-size:14px;line-height:1;" title="Rename phase">\u270E</button>' +
         '<button class="btn btn-ghost btn-sm" data-delete-phase="' + p.id + '" data-phase-name="' + escapeHtml(DATA.phaseDisplayName(p)) + '" style="padding:5px 8px;font-size:14px;line-height:1;color:var(--rose-1);" title="Delete phase">\u2716</button>' +
         '</div>'
       : '') +
     '<div class="eyebrow">PHASE</div><h3>' + escapeHtml(DATA.phaseDisplayName(p)) + '</h3>' +
-    '<div class="meta"><span><i class="icon-file-text i"></i>' + total + ' khata(s)</span><span><i class="icon-indian-rupee i"></i>' + paid + ' paid</span></div>' +
+    '<div class="meta"><span><i class="icon-file-text i"></i>' + total + ' khata(s)</span>' + (CAN.canSeeCompensation() ? '<span><i class="icon-indian-rupee i"></i>' + paid + ' paid</span>' : '') + '</div>' +
     '<div class="badge-row">' +
     '<span class="badge badge-brand">Notice ' + notice + '/' + total + '</span>' +
     '<span class="badge badge-slate">Docs ' + docs + '/' + total + '</span>' +
@@ -1534,7 +1634,7 @@ PAGES.afterPhasesList = function () {
 
   $all("[data-rename-phase]").forEach(function (el) {
     el.addEventListener("click", function (e) {
-      e.stopPropagation(); // don't trigger the card's own data-nav click
+      e.stopPropagation();
       RenamePhaseModal.open(
         el.getAttribute("data-rename-phase"),
         el.getAttribute("data-phase-internal-name"),
@@ -1545,7 +1645,7 @@ PAGES.afterPhasesList = function () {
 
   $all("[data-delete-phase]").forEach(function (el) {
     el.addEventListener("click", function (e) {
-      e.stopPropagation(); // don't trigger the card's own data-nav click
+      e.stopPropagation();
       const phaseId = el.getAttribute("data-delete-phase");
       const phaseName = el.getAttribute("data-phase-name") || "this phase";
       confirmDialog(
@@ -1562,7 +1662,7 @@ PAGES.afterPhasesList = function () {
         delete STATE.phases[phaseId];
         Router.render();
         showToast(phaseName + " deleted.", "success");
-        API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
+        API.post("deletePhase", { phaseId: phaseId })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             STATE.phases[phaseId] = removedPhase;
@@ -1603,9 +1703,9 @@ PAGES.phaseDetail = function (phaseId) {
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/phases">Phases</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(DATA.phaseDisplayName(phase)) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(DATA.phaseDisplayName(phase)) + '</h1><p>' + total + ' khata(s) enlisted in this phase.</p></div>' +
     '<div class="flex gap-8">' +
-    (STATE.isAdmin ? '<button class="btn btn-ghost btn-sm" id="btnRenamePhaseDetail"><i class="icon-pencil i"></i>Rename</button>' : '') +
-    (STATE.isAdmin ? '<button class="btn btn-danger btn-sm" id="btnDeletePhaseDetail"><i class="icon-trash-2 i"></i>Delete phase</button>' : '') +
-    '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button>' +
+    (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" id="btnRenamePhaseDetail"><i class="icon-pencil i"></i>Rename</button>' : '') +
+    (CAN.isAdminOnly() ? '<button class="btn btn-danger btn-sm" id="btnDeletePhaseDetail"><i class="icon-trash-2 i"></i>Delete phase</button>' : '') +
+    (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button>' : '') +
     '</div></div>' +
 
     '<div class="kpi-grid mb-16">' +
@@ -1635,8 +1735,6 @@ PAGES.pkCardHtml = function (v) {
     { label: "Verified", done: v.documentsVerified, icon: "icon-badge-check" },
     { label: "Compensation", done: v.compensationReceived, icon: "icon-indian-rupee" },
   ];
-  // The first not-yet-done step is where this khata is currently stuck.
-  // If an escalation is open, that step (and only that one) turns red.
   const blockingIndex = steps.findIndex(function (s) { return !s.done; });
   const stepsHtml = steps.map(function (s, i) {
     const cls = s.done ? " done" : (v.hasEscalation && i === blockingIndex ? " blocked" : "");
@@ -1688,7 +1786,7 @@ PAGES.afterPhaseDetail = function (phaseId) {
       location.hash = "#/phases";
       Router.render();
       showToast(phaseName + " deleted.", "success");
-      API.post("deletePhase", { token: STATE.token, phaseId: phaseId })
+      API.post("deletePhase", { phaseId: phaseId })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           STATE.phases[phaseId] = removedPhase;
@@ -1709,8 +1807,8 @@ const PhaseModal = {
   create: function () {
     const btn = $("#btnConfirmCreatePhase");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Creating&hellip;</span>';
-    API.post("createPhase", { token: STATE.token }).then(function (data) {
-      STATE.phases[data.phaseId] = { name: data.name, order: Object.keys(STATE.phases).length + 1, createdAt: Date.now(), createdBy: STATE.adminId || "Public User" };
+    API.post("createPhase", {}).then(function (data) {
+      STATE.phases[data.phaseId] = { name: data.name, order: Object.keys(STATE.phases).length + 1, createdAt: Date.now(), createdBy: STATE.userId || "Public User" };
       PhaseModal.close();
       showToast(data.name + " created.", "success");
       location.hash = "#/phases/" + data.phaseId;
@@ -1745,7 +1843,7 @@ const RenamePhaseModal = {
     RenamePhaseModal.close();
     Router.render();
     showToast(displayName ? "Phase renamed." : "Custom name cleared.", "success");
-    API.post("renamePhase", { token: STATE.token, phaseId: phaseId, displayName: displayName })
+    API.post("renamePhase", { phaseId: phaseId, displayName: displayName })
       .then(function () { DATA.refreshQuietly(); })
       .catch(function (err) {
         phase.displayName = prevDisplayName;
@@ -1781,7 +1879,6 @@ const EnlistModal = {
       const blockName = (STATE.blocks[k.blockId] || {}).blockName || "";
       return (k.rtName + " " + k.khataNumber + " " + blockName).toLowerCase().indexOf(q) !== -1;
     });
-    // Sort by Khata Number (numeric-aware) so the list always reads in order.
     const numOf = function (n) {
       const num = parseFloat(String(n || "").replace(/[^0-9.]/g, ""));
       return isNaN(num) ? Infinity : num;
@@ -1821,7 +1918,7 @@ const EnlistModal = {
     const btn = $("#btnConfirmEnlist");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Enlisting&hellip;</span>';
     const phaseId = EnlistModal.phaseId;
-    const actor = STATE.adminId || "Public User";
+    const actor = STATE.userId || "Public User";
     ids.forEach(function (khataId) {
       STATE.phaseKhatas["temp_" + khataId] = {
         phaseId: phaseId, khataId: khataId, noticeServed: false,
@@ -1832,7 +1929,7 @@ const EnlistModal = {
     EnlistModal.close();
     Router.render();
     showToast(ids.length + " khata(s) enlisted.", "success");
-    API.post("enlistKhatas", { token: STATE.token, phaseId: phaseId, khataIds: ids })
+    API.post("enlistKhatas", { phaseId: phaseId, khataIds: ids })
       .then(function () { DATA.refreshQuietly(); })
       .catch(function (err) {
         ids.forEach(function (khataId) { delete STATE.phaseKhatas["temp_" + khataId]; });
@@ -1843,9 +1940,10 @@ const EnlistModal = {
   },
 };
 
-/** The phase-khata detail modal: notice/verify/paid toggles plus the
- * escalation remark box. Content is regenerated on every render()
- * call so it always reflects the latest STATE after a save. */
+/** The phase-khata detail modal. Executors see the same document/date
+ * inputs but never see enabled checkboxes - they're rendered read-only
+ * (disabled) badges instead, and the escalation box is still available
+ * to them as it always was open to everyone in the field. */
 const PKModal = {
   currentId: null,
 
@@ -1856,10 +1954,6 @@ const PKModal = {
   },
   close: function () { $("#pkDetailModal").classList.remove("open"); },
 
-  /** Re-finds the current phaseKhata record even if its id changed
-   * underneath us (a temp_ id replaced by a real server id via a
-   * background refresh while this modal stayed open). Returns the
-   * live record's id, or null if it's genuinely gone. */
   resolveCurrentId: function () {
     if (STATE.phaseKhatas[PKModal.currentId]) return PKModal.currentId;
     const match = Object.keys(STATE.phaseKhatas).find(function (id) {
@@ -1873,10 +1967,6 @@ const PKModal = {
   render: function () {
     const pk = STATE.phaseKhatas[PKModal.currentId];
     if (!pk) { PKModal.close(); return; }
-    // Remember which khata/phase this belongs to, so if the id currently
-    // in PKModal.currentId (e.g. a temp_ id) gets replaced by a real
-    // server id via a background refresh while this modal stays open,
-    // we can still find the record instead of crashing.
     PKModal.currentKhataId = pk.khataId;
     PKModal.currentPhaseId = pk.phaseId;
     const v = DATA.pkView(Object.assign({ id: PKModal.currentId }, pk));
@@ -1885,7 +1975,6 @@ const PKModal = {
     const readyForVerify = v.noticeServed && v.docsCollected;
 
     const noticeDoc = pk.noticeDocument || null;
-    // Stored/displayed as DD-MM-YYYY; the date input itself needs ISO for its value attribute.
     const noticeDateDMY = noticeDoc && noticeDoc.noticeDate ? noticeDoc.noticeDate : yesterdayDMY();
     const noticeDateISO = noticeDoc && noticeDoc.noticeDate ? dmyToISO(noticeDoc.noticeDate) : yesterdayISO();
 
@@ -1898,9 +1987,9 @@ const PKModal = {
       (noticeDoc
         ? '<span class="badge badge-green"><i class="icon-file-check i"></i>' + escapeHtml(noticeDoc.fileName || "Notice uploaded") + '</span>' +
           '<button class="btn btn-ghost btn-sm" id="btnViewNoticeDoc"><i class="icon-eye i"></i>View</button>' +
-          (STATE.isAdmin ? '<button class="btn btn-ghost btn-sm" id="btnDownloadNoticeDoc"><i class="icon-download i"></i>Download</button>' : '') +
+          (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" id="btnDownloadNoticeDoc"><i class="icon-download i"></i>Download</button>' : '') +
           '<label class="btn btn-ghost btn-sm"><i class="icon-upload i"></i><span>Replace</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>' +
-          (STATE.isAdmin ? '<button class="btn btn-danger btn-sm" id="btnDeleteNoticeDoc"><i class="icon-trash-2 i"></i>Delete</button>' : '')
+          (CAN.isAdminOnly() ? '<button class="btn btn-danger btn-sm" id="btnDeleteNoticeDoc"><i class="icon-trash-2 i"></i>Delete</button>' : '')
         : '<label class="btn btn-primary btn-sm"><i class="icon-upload i"></i><span>Upload notice (image/PDF)</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>') +
       '</div>' +
       (!noticeDoc ? '<span class="text-sm text-mute" style="display:block;margin-top:6px;">Required before &ldquo;Notice served&rdquo; can be checked.</span>' : '') +
@@ -1911,7 +2000,11 @@ const PKModal = {
       '<span class="text-sm text-mute" id="noticeDateDisplay" style="display:block;margin-top:6px;">' + escapeHtml(noticeDateDMY) + '</span>' +
       '</div>' +
 
-      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + (!noticeDoc ? " disabled" : "") + '><label for="pkNotice">Notice served' + (!noticeDoc ? '<span class="hint">Upload the notice document above first</span>' : '') + '</label></div>' +
+      // Notice served checkbox: full control (Verifier/Admin) can toggle
+      // it. Executor sees it always disabled - checkbox state is
+      // display-only for them, matching "cannot select any checkbox".
+      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + ((!noticeDoc || !CAN.fullControl()) ? " disabled" : "") + '><label for="pkNotice">Notice served' + (!noticeDoc ? '<span class="hint">Upload the notice document above first</span>' : (!CAN.fullControl() ? '<span class="hint">Only a Verifier or Admin can toggle this</span>' : '')) + '</label></div>' +
+      (v.noticeServed ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Marked served on <b>' + fmtDMY(pk.noticeServedAt) + '</b></div>' : '') +
 
       '<div class="field"><label>Documents collected</label>' +
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
@@ -1919,18 +2012,24 @@ const PKModal = {
       '<a href="#/khata/' + khataId + '/documents" id="pkGoDocs" class="btn btn-ghost btn-sm"><i class="icon-folder i"></i>Manage documents</a>' +
       '</div></div>';
 
-    if (STATE.isAdmin) {
+    if (CAN.fullControl()) {
       html +=
         '<div class="check-row"><input type="checkbox" id="pkVerified"' + (v.documentsVerified ? " checked" : "") + (!readyForVerify && !v.documentsVerified ? " disabled" : "") + '>' +
         '<label for="pkVerified">Documents verified' + (!readyForVerify && !v.documentsVerified ? '<span class="hint">Needs notice served + documents collected first</span>' : '') + '</label></div>' +
+        (v.documentsVerified ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Verified on <b>' + fmtDMY(pk.documentsVerifiedAt) + '</b></div>' : '') +
         '<div class="check-row"><input type="checkbox" id="pkPaid"' + (v.compensationReceived ? " checked" : "") + (!v.documentsVerified && !v.compensationReceived ? " disabled" : "") + '>' +
-        '<label for="pkPaid">Compensation received' + (!v.documentsVerified && !v.compensationReceived ? '<span class="hint">Needs documents verified first</span>' : '') + '</label></div>';
+        '<label for="pkPaid">Compensation received' + (!v.documentsVerified && !v.compensationReceived ? '<span class="hint">Needs documents verified first</span>' : '') + '</label></div>' +
+        (v.compensationReceived ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Received on <b>' + fmtDMY(pk.compensationReceivedAt) + '</b></div>' : '');
     } else {
       html += '<div class="deflist mt-8 mb-16">' +
-        PAGES.defItem("Documents verified", v.documentsVerified ? "Yes" : "Pending") +
-        PAGES.defItem("Compensation", v.compensationReceived ? "Received" : "Pending") +
+        PAGES.defItem("Documents Verification", v.documentsVerified ? "Yes (" + fmtDMY(pk.documentsVerifiedAt) + ")" : "Pending") +
+        PAGES.defItem("Compensation", v.compensationReceived ? "Received (" + fmtDMY(pk.compensationReceivedAt) + ")" : "Pending") +
         '</div>';
     }
+
+    html += (v.compensationReceived
+      ? '<div class="btn-row" style="justify-content:flex-start;margin:4px 0 18px;"><button class="btn btn-primary btn-sm" id="btnDownloadReport"><i class="icon-file-down i"></i>Download Report (PDF)</button></div>'
+      : '');
 
     html += '<div class="field"><label>Escalate to admin</label>' +
       '<textarea id="pkEscalationText" rows="3" placeholder="Describe the delay or refusal so the admin can follow up&hellip;">' + escapeHtml(esc ? esc.remarks : "") + '</textarea></div>' +
@@ -1938,7 +2037,7 @@ const PKModal = {
       '<button class="btn btn-primary btn-sm" id="btnSaveEscalation"><i class="icon-flag i"></i>' + (esc ? "Update remark" : "Escalate") + '</button>' +
       (esc ? '<button class="btn btn-danger btn-sm" id="btnDeleteEscalation"><i class="icon-trash-2 i"></i>Clear</button>' : '') +
       '</div>' +
-      (STATE.isAdmin
+      (CAN.isAdminOnly()
         ? '<div class="btn-row" style="justify-content:flex-start;margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">' +
           '<button class="btn btn-danger btn-sm" id="btnRemoveFromPhase"><i class="icon-x-circle i"></i>Remove from this phase</button>' +
           '</div>'
@@ -1952,7 +2051,15 @@ const PKModal = {
   wire: function () {
     $("#btnClosePk").addEventListener("click", PKModal.close);
     const goDocs = $("#pkGoDocs");
-    if (goDocs) goDocs.addEventListener("click", PKModal.close);
+    if (goDocs) goDocs.addEventListener("click", function () {
+      STATE.executorReturnPhaseId = PKModal.currentPhaseId;
+      PKModal.close();
+    });
+
+    const downloadReportBtn = $("#btnDownloadReport");
+    if (downloadReportBtn) downloadReportBtn.addEventListener("click", function () {
+      ReportPDF.generate(PKModal.currentId);
+    });
 
     const noticeDocInput = $("#noticeDocInput");
     if (noticeDocInput) noticeDocInput.addEventListener("change", function (e) {
@@ -1973,7 +2080,7 @@ const PKModal = {
         }
         const pk = STATE.phaseKhatas[pkId];
         const prevDoc = pk.noticeDocument;
-        pk.noticeDocument = { fileName: file.name, mimeType: file.type, noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.adminId || "Public User" };
+        pk.noticeDocument = { fileName: file.name, mimeType: file.type, noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.userId || "Public User" };
         Router.render(); PKModal.render();
         showToast("Notice document uploaded.", "success");
         API.post("setNoticeDocument", {
@@ -2006,7 +2113,7 @@ const PKModal = {
 
       const pkId = PKModal.currentId;
       const pkNow = STATE.phaseKhatas[pkId];
-      if (!pkNow || !pkNow.noticeDocument) return; // no document yet - date is just staged for the upcoming upload
+      if (!pkNow || !pkNow.noticeDocument) return;
       const prevDate = pkNow.noticeDocument.noticeDate;
       pkNow.noticeDocument.noticeDate = dmy;
       showToast("Notice date updated.", "success");
@@ -2021,9 +2128,6 @@ const PKModal = {
 
     const viewNoticeBtn = $("#btnViewNoticeDoc");
     if (viewNoticeBtn) viewNoticeBtn.addEventListener("click", function () {
-      // Open the tab synchronously, right in the click handler, so the
-      // browser never treats it as a blocked pop-up - we fill it in the
-      // moment the (often already-cached) data arrives.
       const pendingWin = window.open("", "_blank");
       if (pendingWin) pendingWin.document.write("Loading notice document&hellip;");
       const originalHtml = viewNoticeBtn.innerHTML;
@@ -2049,7 +2153,7 @@ const PKModal = {
       });
     });
 
-        const deleteNoticeBtn = $("#btnDeleteNoticeDoc");
+    const deleteNoticeBtn = $("#btnDeleteNoticeDoc");
     if (deleteNoticeBtn) deleteNoticeBtn.addEventListener("click", function () {
       confirmDialog(
         "Delete this notice document?",
@@ -2066,7 +2170,7 @@ const PKModal = {
         delete STATE.noticeDocuments[pkId];
         Router.render(); PKModal.render();
         showToast("Notice document deleted.", "success");
-        API.post("deleteNoticeDocument", { token: STATE.token, phaseKhataId: pkId })
+        API.post("deleteNoticeDocument", { phaseKhataId: pkId })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             pk.noticeDocument = prevDoc;
@@ -2094,7 +2198,8 @@ const PKModal = {
     });
 
     const noticeCb = $("#pkNotice");
-    noticeCb.addEventListener("change", function () {
+    if (noticeCb && !noticeCb.disabled) noticeCb.addEventListener("change", function () {
+      if (!CAN.fullControl()) { noticeCb.checked = !noticeCb.checked; return; }
       const val = noticeCb.checked;
       const pkId = PKModal.currentId;
       const pk = STATE.phaseKhatas[pkId];
@@ -2102,7 +2207,7 @@ const PKModal = {
       pk.noticeServed = val;
       Router.render(); PKModal.render();
       showToast(val ? "Notice marked as served." : "Notice mark removed.", "success");
-      API.post("setNoticeServed", { token: STATE.token, phaseKhataId: pkId, value: val })
+      API.post("setNoticeServed", { phaseKhataId: pkId, value: val })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           pk.noticeServed = prev;
@@ -2118,10 +2223,10 @@ const PKModal = {
       const pk = STATE.phaseKhatas[pkId];
       const prevVerified = pk.documentsVerified, prevPaid = pk.compensationReceived;
       pk.documentsVerified = val;
-      if (!val) pk.compensationReceived = false; // mirrors the backend invariant
+      if (!val) pk.compensationReceived = false;
       Router.render(); PKModal.render();
       showToast(val ? "Documents marked verified." : "Verification removed.", "success");
-      API.post("setDocumentsVerified", { token: STATE.token, phaseKhataId: pkId, value: val })
+      API.post("setDocumentsVerified", { phaseKhataId: pkId, value: val })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           pk.documentsVerified = prevVerified; pk.compensationReceived = prevPaid;
@@ -2139,7 +2244,7 @@ const PKModal = {
       pk.compensationReceived = val;
       Router.render(); PKModal.render();
       showToast(val ? "Compensation marked received." : "Compensation mark removed.", "success");
-      API.post("setCompensationReceived", { token: STATE.token, phaseKhataId: pkId, value: val })
+      API.post("setCompensationReceived", { phaseKhataId: pkId, value: val })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           pk.compensationReceived = prev;
@@ -2154,10 +2259,10 @@ const PKModal = {
       const pkId = PKModal.currentId;
       const pk = STATE.phaseKhatas[pkId];
       const prevEsc = pk.escalation;
-      pk.escalation = Object.assign({}, prevEsc, { remarks: remarks, updatedAt: Date.now(), updatedBy: STATE.adminId || "Public User" });
+      pk.escalation = Object.assign({}, prevEsc, { remarks: remarks, updatedAt: Date.now(), updatedBy: STATE.userId || "Public User" });
       Router.render(); PKModal.render();
       showToast("Escalation saved.", "success");
-      API.post("setEscalation", { token: STATE.token, phaseKhataId: pkId, remarks: remarks })
+      API.post("setEscalation", { phaseKhataId: pkId, remarks: remarks })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           pk.escalation = prevEsc;
@@ -2176,7 +2281,7 @@ const PKModal = {
         delete pk.escalation;
         Router.render(); PKModal.render();
         showToast("Escalation cleared.", "success");
-        API.post("deleteEscalation", { token: STATE.token, phaseKhataId: pkId })
+        API.post("deleteEscalation", { phaseKhataId: pkId })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             pk.escalation = prevEsc;
@@ -2186,11 +2291,8 @@ const PKModal = {
       });
     });
 
-        const removeBtn = $("#btnRemoveFromPhase");
+    const removeBtn = $("#btnRemoveFromPhase");
     if (removeBtn) removeBtn.addEventListener("click", function () {
-      // Close the khata modal FIRST, right when the button is clicked,
-      // so the confirmation dialog isn't left rendering underneath it -
-      // the user shouldn't have to close this modal manually first.
       const pkIdToRemove = PKModal.currentId;
       PKModal.close();
       confirmDialog(
@@ -2203,7 +2305,7 @@ const PKModal = {
         delete STATE.phaseKhatas[pkIdToRemove];
         Router.render();
         showToast("Khata removed from phase.", "success");
-        API.post("removeKhataFromPhase", { token: STATE.token, phaseKhataId: pkIdToRemove })
+        API.post("removeKhataFromPhase", { phaseKhataId: pkIdToRemove })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             if (removed) STATE.phaseKhatas[pkIdToRemove] = removed;
@@ -2212,6 +2314,116 @@ const PKModal = {
           });
       });
     });
+  },
+};
+
+/* ============================================================
+   PDF PROGRESS REPORT — a one-page diagrammatic timeline of a
+   khata's phase journey, generated client-side with jsPDF.
+   ============================================================ */
+const ReportPDF = {
+  generate: function (pkId) {
+    const pk = STATE.phaseKhatas[pkId];
+    if (!pk) { showToast("Could not find this record.", "error"); return; }
+    const v = DATA.pkView(Object.assign({ id: pkId }, pk));
+    const khata = v.khata, block = v.block;
+    const phase = STATE.phases[pk.phaseId] || {};
+    const comp = STATE.compensation[pk.khataId];
+
+    const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDFCtor) { showToast("PDF library failed to load. Check your connection and try again.", "error"); return; }
+
+    const doc = new jsPDFCtor({ unit: "pt", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const brand = [67, 56, 202], money = [4, 120, 87], ink = [15, 23, 42], soft = [71, 85, 105], mute = [148, 163, 184];
+
+    // Header band
+    doc.setFillColor(brand[0], brand[1], brand[2]);
+    doc.rect(0, 0, pageW, 90, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(18);
+    doc.text("RT Compensation \u2014 Khata Progress Report", 40, 40);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+    doc.text((khata.rtName || "Unnamed RT") + "   |   Khata " + (khata.khataNumber || "") + "   |   " + (block.blockName || ""), 40, 62);
+    doc.text(DATA.phaseDisplayName(phase), 40, 78);
+
+    let y = 120;
+    doc.setTextColor(ink[0], ink[1], ink[2]);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text("Summary", 40, y); y += 8;
+    doc.setDrawColor(226, 232, 240); doc.line(40, y, pageW - 40, y); y += 20;
+
+    const clean = function (s) { return String(s).replace("&mdash;", "-"); };
+    const summaryRows = [
+      ["Acquired land", clean(fmtAcres(khata.land && khata.land.acquiredLandAcres))],
+      ["District / Village", ((khata.location && khata.location.district) || "-") + " / " + ((khata.location && khata.location.village) || "-")],
+      ["Documentation", PAGES.isDocComplete(pk.khataId) ? "Completed" : "Incomplete"],
+    ];
+    if (comp) summaryRows.push(["Total compensation", clean(fmtINR(comp.totalAmount))]);
+
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10.5);
+    summaryRows.forEach(function (row) {
+      doc.setTextColor(soft[0], soft[1], soft[2]); doc.text(row[0] + ":", 40, y);
+      doc.setTextColor(ink[0], ink[1], ink[2]); doc.text(String(row[1]), 210, y);
+      y += 18;
+    });
+
+    y += 24;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.setTextColor(ink[0], ink[1], ink[2]);
+    doc.text("Progress Timeline", 40, y); y += 8;
+    doc.setDrawColor(226, 232, 240); doc.line(40, y, pageW - 40, y); y += 46;
+
+    const stages = [
+      { label: "Enlisted", date: pk.enlistedAt, done: true },
+      { label: "Notice Served", date: pk.noticeServedAt, done: v.noticeServed },
+      { label: "Documents Verified", date: pk.documentsVerifiedAt, done: v.documentsVerified },
+      { label: "Compensation Received", date: pk.compensationReceivedAt, done: v.compensationReceived },
+    ];
+
+    const marginX = 65, usableW = pageW - marginX * 2, stepW = usableW / (stages.length - 1), cy = y;
+
+    doc.setLineWidth(2.5); doc.setDrawColor(money[0], money[1], money[2]);
+    doc.line(marginX, cy, marginX + usableW, cy);
+
+    stages.forEach(function (s, i) {
+      const cx = marginX + stepW * i;
+      doc.setFillColor.apply(doc, s.done ? money : mute);
+      doc.circle(cx, cy, 9, "F");
+      doc.setFillColor(255, 255, 255);
+      doc.circle(cx, cy, 3.5, "F");
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      doc.setTextColor(ink[0], ink[1], ink[2]);
+      doc.text(s.label, cx, cy - 22, { align: "center", maxWidth: stepW - 8 });
+
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      doc.setTextColor(soft[0], soft[1], soft[2]);
+      doc.text(s.date ? fmtDMY(s.date) : "Pending", cx, cy + 26, { align: "center" });
+    });
+
+    y = cy + 60;
+
+    if (pk.escalation && pk.escalation.remarks) {
+      y += 20;
+      doc.setFillColor(255, 241, 242);
+      doc.roundedRect(40, y, pageW - 80, 55, 6, 6, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.setTextColor(190, 18, 60);
+      doc.text("Escalation remark:", 50, y + 18);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+      doc.setTextColor(ink[0], ink[1], ink[2]);
+      doc.text(String(pk.escalation.remarks), 50, y + 34, { maxWidth: pageW - 100 });
+      y += 70;
+    }
+
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.setTextColor(mute[0], mute[1], mute[2]);
+    doc.text("Generated on " + fmtDMY(Date.now()) + "   \u00b7   RT Compensation Management System", 40, pageH - 30);
+
+    const safeName = ((khata.khataNumber || "khata") + "_" + (khata.rtName || "")).replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+    doc.save(safeName + "_Report.pdf");
   },
 };
 
@@ -2226,8 +2438,6 @@ function wirePhaseSystem() {
   $("#btnConfirmEnlist").addEventListener("click", EnlistModal.submit);
   $("#enlistSearchInput").addEventListener("input", debounce(function (e) { EnlistModal.renderList(e.target.value); }, 150));
 }
-
-
 
 /* ============================================================
    PAGES - RT / KHATA DETAIL
@@ -2244,15 +2454,18 @@ PAGES.khataDetail = function (khataId) {
   const docs = DATA.documentsForKhata(khataId);
   const status = (k.metadata || {}).status || "On record";
   const khataPhaseViews = DATA.khataPhaseEntries(khataId).map(DATA.pkView);
+  const breadcrumbHtml = CAN.isExecutor()
+    ? '<a href="#/phases' + (STATE.executorReturnPhaseId ? "/" + STATE.executorReturnPhaseId : "") + '" class="back-to-phase-btn"><i class="icon-arrow-left i"></i> Back to phase</a>'
+    : '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks/' + k.blockId + '">' + escapeHtml(block.blockName || "Block") + '</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Khata ' + escapeHtml(k.khataNumber) + "</div>";
 
   return (
-    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks/' + k.blockId + '">' + escapeHtml(block.blockName || "Block") + '</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Khata ' + escapeHtml(k.khataNumber) + "</div>" +
+    breadcrumbHtml +
 
     '<div class="rt-hero"><div><h1>' + escapeHtml(k.rtName || "Unnamed RT") + '</h1><div class="sub">Khata ' + escapeHtml(k.khataNumber) + " &middot; " + escapeHtml(k.rtId || "&mdash;") + " &middot; " + escapeHtml(block.blockName || "") + "</div></div>" +
     '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structures.length + '</b><span>Structures</span></div><div class="stat"><b>' + trees.length + '</b><span>Tree records</span></div></div></div>' +
 
     '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docs.length + ')</button>' +
-    (STATE.isAdmin ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
+    (CAN.canSeeCompensation() ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
     PAGES.defItem("RT name", k.rtName) + PAGES.defItem("RT ID", k.rtId) + PAGES.defItem("Khata number", k.khataNumber) +
@@ -2285,7 +2498,7 @@ PAGES.khataDetail = function (khataId) {
     }).join("") : emptyState("icon-trees", "No trees recorded", "No tree entries exist for this Khata.")) + "</div></div>" +
 
     '<div class="tabpanel" data-panel="documents">' + PAGES.documentsTabHtml(khataId, docs) + "</div>" +
-    (STATE.isAdmin ? '<div class="tabpanel" data-panel="compensation">' + PAGES.compensationTabHtml(khataId) + "</div>" : "")
+    (CAN.canSeeCompensation() ? '<div class="tabpanel" data-panel="compensation">' + PAGES.compensationTabHtml(khataId) + "</div>" : "")
   );
 };
 
@@ -2296,9 +2509,10 @@ PAGES.defItem = function (label, value) {
 
 PAGES.compensationTabHtml = function (khataId) {
   const c = STATE.compensation[khataId];
-  const editBtn = '<button class="btn btn-primary btn-sm" id="btnEditComp" data-khata="' + khataId + '"><i class="icon-pencil i"></i>' + (c ? "Edit" : "Set compensation") + "</button>";
+  const canEdit = CAN.fullControl();
+  const editBtn = canEdit ? ('<button class="btn btn-primary btn-sm" id="btnEditComp" data-khata="' + khataId + '"><i class="icon-pencil i"></i>' + (c ? "Edit" : "Set compensation") + "</button>") : "";
   if (!c) {
-    return '<div class="comp-lock"><i class="icon-lock i"></i>No compensation record has been entered for this Khata yet.</div><div class="mt-16">' + editBtn + "</div>";
+    return '<div class="comp-lock"><i class="icon-lock i"></i>No compensation record has been entered for this Khata yet.</div>' + (editBtn ? '<div class="mt-16">' + editBtn + "</div>" : "");
   }
   return (
     '<div class="comp-hero"><div class="lbl">Total compensation</div><div class="amt">' + fmtINR(c.totalAmount) + "</div></div>" +
@@ -2306,15 +2520,12 @@ PAGES.compensationTabHtml = function (khataId) {
     PAGES.defItem("Land amount", fmtINR(c.landAmount)) + PAGES.defItem("Structure amount", fmtINR(c.structureAmount)) +
     PAGES.defItem("Tree amount", fmtINR(c.treeAmount)) + (c.exGratia ? PAGES.defItem("Ex-gratia (DLC)", fmtINR(c.exGratia)) : "") +
     PAGES.defItem("Status", c.status) + PAGES.defItem("Last updated", fmtDate(c.lastUpdated)) +
-    "</div></div><div class=\"mt-16\">" + editBtn + "</div>"
+    "</div></div>" + (editBtn ? "<div class=\"mt-16\">" + editBtn + "</div>" : "")
   );
 };
 
 /* ============================================================
-   PAGES - DOCUMENTS TAB (gallery + uploader)
-   Thumbnails are rendered as placeholders first, then filled in
-   as their base64 image data arrives (fetched on demand - the
-   bootstrap payload never carries image bytes).
+   PAGES - DOCUMENTS TAB
    ============================================================ */
 PAGES.documentChecklistHtml = function (khataId, docs) {
   const uploadedByType = {};
@@ -2341,10 +2552,7 @@ PAGES.documentChecklistHtml = function (khataId, docs) {
       : (isOptional && !markedApplicable
           ? '<span class="badge badge-slate">Not applicable?</span>'
           : '<span class="badge badge-amber"><i class="icon-circle-alert i"></i> Pending</span>');
-    // Admin-only toggle: only ever shown for the 4 situational document
-    // types, and only when the file hasn't already been uploaded (once
-    // it's uploaded, applicability is moot - the document exists).
-    const toggleBtn = (isOptional && STATE.isAdmin && !done)
+    const toggleBtn = (isOptional && CAN.fullControl() && !done)
       ? (markedApplicable
           ? '<button class="btn btn-ghost btn-sm" data-doctype-toggle="' + safeType + '" data-doctype-applicable="0">Mark not applicable</button>'
           : '<button class="btn btn-ghost btn-sm" data-doctype-toggle="' + safeType + '" data-doctype-applicable="1">Mark applicable</button>')
@@ -2363,7 +2571,7 @@ PAGES.documentChecklistHtml = function (khataId, docs) {
   }).join("");
 
   return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + mandatoryCompletedCount + "/" + requiredTypes.length + ' mandatory complete</span></div>' +
-    '<div style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">\u25B3 marks documents that are not mandatory by default - an admin can mark them applicable for a specific khata if needed.</div>' +
+    '<div style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">\u25B3 marks documents that are not mandatory by default - a Verifier or Admin can mark them applicable for a specific khata if needed.</div>' +
     items +
     (isComplete ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
     "</div>";
@@ -2374,23 +2582,14 @@ PAGES.documentsTabHtml = function (khataId, docs) {
 };
 
 /* ============================================================
-   UPLOAD LOGIC — resize + compress client-side, send as base64
-   to the backend (no Firebase Storage in this architecture).
+   UPLOAD LOGIC
    ============================================================ */
 const UPLOAD = {
-  // Tunable in one place. Full images are still meant to be legible
-  // official records (Aadhar, PAN, land deeds); thumbnails only need
-  // to look right at ~100px in a grid tile, so they can be pushed
-  // much smaller/lower-quality without anyone noticing.
   CONFIG: {
     fullMaxEdge: 900, fullQuality: 0.55,
     thumbMaxEdge: 220, thumbQuality: 0.45,
   },
 
-  /** Loads the file once and derives BOTH a compressed full image and
-   * a much smaller thumbnail from the same decoded bitmap - avoids
-   * reading the file twice, and keeps the thumbnail generation free
-   * of an extra network round trip. */
   compress: function (file) {
     return new Promise(function (resolve, reject) {
       const reader = new FileReader();
@@ -2428,8 +2627,6 @@ const UPLOAD = {
   uploadOne: function (khataId, file, docType) {
     UPLOAD.compress(file).then(function (variants) {
       const tempId = "tempdoc_" + Math.random().toString(36).slice(2);
-      // Optimistic: the document (and its real thumbnail) appears instantly,
-      // built from the compression we already did in the browser.
       STATE.documents[tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "" };
       STATE.documentThumbnails[tempId] = variants.thumb;
       STATE.documentImages[tempId] = variants.full;
@@ -2463,7 +2660,7 @@ const UPLOAD = {
         delete STATE.documents[doc.id];
         Router.render();
         showToast("Document deleted.", "success");
-        API.post("deleteDocument", { token: STATE.token, documentId: doc.id })
+        API.post("deleteDocument", { documentId: doc.id })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             if (removed) STATE.documents[doc.id] = removed;
@@ -2475,8 +2672,7 @@ const UPLOAD = {
 };
 
 /* ============================================================
-   ZIP DOWNLOAD — bundles every document image for a khata into
-   one .zip, fetching each full image on demand first.
+   ZIP DOWNLOAD
    ============================================================ */
 const ZIPDOWNLOAD = {
   downloadAll: function (khataId, btn) {
@@ -2489,9 +2685,6 @@ const ZIPDOWNLOAD = {
     const khata = STATE.khatas[khataId] || {};
     const khataNumberSafe = ((khata.khataNumber || khataId) + "").replace(/[^a-z0-9]+/gi, "_");
 
-    // Track how many times each document type has been used so two
-    // uploads of the same type ("Bank Passbook", "Bank Passbook") don't
-    // collide and silently overwrite one another inside the ZIP.
     const nameCounts = {};
     Promise.all(docs.map(function (d) {
       return DATA.getDocumentImage(d.id).then(function (dataUrl) {
@@ -2521,8 +2714,7 @@ const ZIPDOWNLOAD = {
 };
 
 /* ============================================================
-   BULK IMPORT — parse an Excel file client-side (SheetJS) and
-   send all rows to the backend in one request.
+   BULK IMPORT
    ============================================================ */
 const IMPORT = {
   parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedUpdateRows: [],
@@ -2602,11 +2794,11 @@ const IMPORT = {
     const btn = $("#btnConfirmImport");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Importing&hellip;</span>';
     const p1 = (IMPORT.parsedRows.length || IMPORT.parsedStructureRows.length || IMPORT.parsedTreeRows.length)
-      ? API.post("bulkImport", { token: STATE.token, rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows })
+      ? API.post("bulkImport", { rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows })
       : Promise.resolve({ khatasCreated: 0, structuresAdded: 0, treesAdded: 0 });
     p1.then(function (data) {
       const p2 = IMPORT.parsedUpdateRows.length
-        ? API.post("updateKhataFields", { token: STATE.token, rows: IMPORT.parsedUpdateRows })
+        ? API.post("updateKhataFields", { rows: IMPORT.parsedUpdateRows })
         : Promise.resolve({ matched: 0 });
       return p2.then(function (updData) {
         showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + updData.matched + " field update(s) done.", "success");
@@ -2621,18 +2813,17 @@ const IMPORT = {
 };
 
 /* ============================================================
-   LIGHTBOX — fetches the full image on demand the first time a
-   document is opened (from a thumbnail or the gallery).
+   LIGHTBOX
    ============================================================ */
 const Lightbox = {
   open: function (doc) {
     $("#lbImage").src = "";
     $("#lbMeta").innerHTML = escapeHtml(doc.documentType) + " &middot; " + escapeHtml(doc.fileName) + " &middot; " + fmtDate(doc.uploadedAt) +
-      (STATE.isAdmin ? '<div class="mt-16"><button class="btn btn-danger btn-sm" id="lbDeleteBtn"><i class="icon-trash-2 i"></i>Delete</button></div>' : "");
+      (CAN.fullControl() ? '<div class="mt-16"><button class="btn btn-danger btn-sm" id="lbDeleteBtn"><i class="icon-trash-2 i"></i>Delete</button></div>' : "");
     $("#lightbox").classList.add("open");
     DATA.getDocumentImage(doc.id).then(function (dataUrl) { $("#lbImage").src = dataUrl; })
       .catch(function () { showToast("Could not load full image.", "error"); });
-    if (STATE.isAdmin) {
+    if (CAN.fullControl()) {
       const btn = $("#lbDeleteBtn");
       if (btn) btn.addEventListener("click", function () { Lightbox.close(); UPLOAD.deleteDoc(doc); });
     }
@@ -2640,7 +2831,6 @@ const Lightbox = {
   close: function () { $("#lightbox").classList.remove("open"); },
 };
 
-/* Fills each doc-thumb placeholder with its real image once fetched. */
 function loadThumbnails(scopeSelector) {
   $all((scopeSelector || "") + " .doc-thumb").forEach(function (el) {
     const docId = el.getAttribute("data-doc-id");
@@ -2666,9 +2856,6 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
     });
   });
 
-  // If the route asked for a specific tab (e.g. "#/khata/<id>/documents"
-  // from the "Manage documents" link), open straight to it instead of
-  // the default Overview tab.
   if (initialTab) {
     const targetBtn = $('.tab-btn[data-tab="' + initialTab + '"]');
     if (targetBtn) targetBtn.click();
@@ -2691,7 +2878,7 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
     });
   });
 
-    $all("[data-doctype-toggle]").forEach(function (btn) {
+  $all("[data-doctype-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const docType = btn.getAttribute("data-doctype-toggle");
       const applicable = btn.getAttribute("data-doctype-applicable") === "1";
@@ -2702,7 +2889,7 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
         ? (prev.indexOf(docType) === -1 ? prev.concat([docType]) : prev)
         : prev.filter(function (t) { return t !== docType; });
       Router.render(); PAGES.afterKhataDetail(khataId, "documents");
-      API.post("setDocTypeApplicable", { token: STATE.token, khataId: khataId, docType: docType, applicable: applicable })
+      API.post("setDocTypeApplicable", { khataId: khataId, docType: docType, applicable: applicable })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
           k.applicableOptionalDocs = prev;
@@ -2749,7 +2936,7 @@ PAGES.afterDocumentsPage = function () {
 };
 
 /* ============================================================
-   COMPENSATION EDIT MODAL (admin only)
+   COMPENSATION EDIT MODAL (Verifier + Admin)
    ============================================================ */
 const CompModal = {
   currentKhataId: null,
@@ -2760,8 +2947,17 @@ const CompModal = {
     $("#compStructure").value = c.structureAmount || "";
     $("#compTree").value = c.treeAmount || "";
     $("#compExGratia").value = c.exGratia || "";
-    $("#compStatus").value = c.status || "On record";
+    const rawStatus = c.status || "CR Approved";
+    const isBlocked = /^blocked/i.test(rawStatus);
+    $("#compStatus").value = isBlocked ? "Blocked" : "CR Approved";
+    $("#compBlockedReason").value = isBlocked ? rawStatus.replace(/^blocked\s*-\s*/i, "") : "";
+    CompModal.toggleReasonField();
     $("#compEditModal").classList.add("open");
+  },
+  toggleReasonField: function () {
+    const isBlocked = $("#compStatus").value === "Blocked";
+    $("#compBlockedReasonField").style.display = isBlocked ? "" : "none";
+    PAGES.validateField("compBlockedReasonField", true);
   },
   close: function () { $("#compEditModal").classList.remove("open"); },
   save: function () {
@@ -2770,8 +2966,15 @@ const CompModal = {
     const structure = parseFloat($("#compStructure").value) || 0;
     const tree = parseFloat($("#compTree").value) || 0;
     const exGratia = parseFloat($("#compExGratia").value) || 0;
-    const status = $("#compStatus").value;
-    const payload = { token: STATE.token, khataId: khataId, landAmount: land, structureAmount: structure, treeAmount: tree, exGratia: exGratia, status: status };
+    const statusChoice = $("#compStatus").value;
+    let status = "CR Approved";
+    if (statusChoice === "Blocked") {
+      const reason = $("#compBlockedReason").value.trim();
+      PAGES.validateField("compBlockedReasonField", !!reason);
+      if (!reason) { showToast("Please provide a reason for blocking.", "error"); return; }
+      status = "Blocked - " + reason;
+    }
+    const payload = { khataId: khataId, landAmount: land, structureAmount: structure, treeAmount: tree, exGratia: exGratia, status: status };
 
     const prev = STATE.compensation[khataId];
     STATE.compensation[khataId] = { landAmount: land, structureAmount: structure, treeAmount: tree, exGratia: exGratia, totalAmount: land + structure + tree + exGratia, status: status, lastUpdated: Date.now() };
@@ -2864,7 +3067,6 @@ PAGES.afterAdminAnalytics = function () {
   });
   const palette = ["#4338CA", "#2563EB", "#0891B2", "#7C3AED", "#D97706", "#059669", "#DB2777"];
 
-  /* ---- Phase pipeline (stacked-style grouped bar) ---- */
   const phases = DATA.phaseList();
   const phaseNames = phases.map(function (p) { return p.name; });
   const noticeData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.noticeServed; }).length; });
@@ -2889,7 +3091,6 @@ PAGES.afterAdminAnalytics = function () {
     });
   } else if (ctxPP) { ctxPP.parentElement.innerHTML = emptyState("icon-bar-chart-3", "No phases yet", "Create a phase and enlist khatas to see this chart."); }
 
-  /* ---- Overall pipeline stage distribution ---- */
   const pkViews = DATA.allPhaseKhataViews();
   const stageLabels = ["Enlisted", "In progress", "Ready for verification", "Documents verified", "Compensation received"];
   const stageCounts = [0, 0, 0, 0, 0];
@@ -2978,7 +3179,7 @@ PAGES.afterAdminRecords = function () {
     if (!name || !code) { showToast("Please fill in the required fields.", "error"); return; }
     const village = $("#in_blockVillage").value.trim(), district = $("#in_blockDistrict").value.trim();
 
-    API.post("addBlock", { token: STATE.token, blockName: name, blockCode: code, village: village, district: district })
+    API.post("addBlock", { blockName: name, blockCode: code, village: village, district: district })
       .then(function (data) {
         STATE.blocks[data.blockId] = { blockName: name, blockCode: code, location: { village: village, district: district } };
         showToast("Block added.", "success");
@@ -2994,7 +3195,7 @@ PAGES.afterAdminRecords = function () {
     if (!blockId || !khataNumber || !rtName) { showToast("Please fill in the required fields.", "error"); return; }
     const acres = parseFloat($("#in_land").value), landCategory = $("#in_landCat").value.trim();
 
-    API.post("addKhata", { token: STATE.token, blockId: blockId, khataNumber: khataNumber, rtName: rtName, acquiredLandAcres: acres, landCategory: landCategory })
+    API.post("addKhata", { blockId: blockId, khataNumber: khataNumber, rtName: rtName, acquiredLandAcres: acres, landCategory: landCategory })
       .then(function (data) {
         STATE.khatas[data.khataId] = {
           blockId: blockId, khataNumber: khataNumber, rtName: rtName,
@@ -3014,6 +3215,78 @@ PAGES.afterAdminRecords = function () {
     e.target.value = "";
   });
 };
+
+/* ============================================================
+   PAGES - ADMIN: MANAGE USERS  (create Executor / Verifier accounts,
+   stored in the Users Google Sheet by the backend)
+   ============================================================ */
+PAGES.adminUsers = function () {
+  return '<div class="page-head"><div><h1>Manage users</h1></div>' +
+    '<button class="btn btn-primary btn-sm" id="btnCreateUser"><i class="icon-user-plus i"></i>Create user</button></div>' +
+    '<div class="card" id="usersListHost">' + skeletonCards(1) + '</div>';
+};
+
+PAGES.afterAdminUsers = function () {
+  $("#btnCreateUser").addEventListener("click", function () { CreateUserModal.open(); });
+  const host = $("#usersListHost");
+  DATA.loadUsersIfAdmin().then(function () {
+    const rows = Object.keys(STATE.users).map(function (id) { return Object.assign({ id: id }, STATE.users[id]); });
+    if (!rows.length) { host.innerHTML = emptyState("icon-users", "No users yet", "Create an Executor or Verifier account to get started."); return; }
+    host.innerHTML = rows.map(function (u) {
+      const roleClass = u.role === "Verifier" ? "badge-brand" : "badge-amber";
+      return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(u.userName || "") + ' &middot; ' + escapeHtml(u.userId || "") + '</div><div class="details">Role: ' + escapeHtml(u.role || "") + '</div></div>' +
+        '<div class="flex items-center gap-8"><span class="badge ' + roleClass + '">' + escapeHtml(u.role || "") + '</span>' +
+        '<button class="btn btn-danger btn-sm" data-delete-user="' + escapeHtml(u.userId) + '" style="padding:6px 10px;">Delete</button></div></div>';
+    }).join("");
+    $all("[data-delete-user]", host).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const userId = btn.getAttribute("data-delete-user");
+        confirmDialog("Delete user " + userId + "?", "This immediately revokes their access and removes the row from the Users sheet.", "Delete").then(function (ok) {
+          if (!ok) return;
+          API.post("deleteUser", { userId: userId }).then(function () {
+            showToast("User deleted.", "success");
+            PAGES.afterAdminUsers();
+          }).catch(function (err) { showToast(err.message || "Could not delete user", "error"); });
+        });
+      });
+    });
+  });
+};
+
+const CreateUserModal = {
+  open: function () {
+    $("#cuUserName").value = ""; $("#cuUserId").value = ""; $("#cuPassword").value = ""; $("#cuRole").value = "Executor";
+    ["cuFieldName", "cuFieldId", "cuFieldPassword"].forEach(function (id) { PAGES.validateField(id, true); });
+    $("#createUserModal").classList.add("open");
+  },
+  close: function () { $("#createUserModal").classList.remove("open"); },
+  submit: function () {
+    const userName = $("#cuUserName").value.trim();
+    const userId = $("#cuUserId").value.trim();
+    const password = $("#cuPassword").value;
+    const role = $("#cuRole").value;
+    PAGES.validateField("cuFieldName", !!userName);
+    PAGES.validateField("cuFieldId", !!userId);
+    PAGES.validateField("cuFieldPassword", !!password);
+    if (!userName || !userId || !password) { showToast("Please fill in all fields.", "error"); return; }
+
+    const btn = $("#btnConfirmCreateUser");
+    btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Saving&hellip;</span>';
+    API.post("createUser", { userName: userName, userId: userId, password: password, role: role })
+      .then(function () {
+        CreateUserModal.close();
+        showToast("User created.", "success");
+        PAGES.afterAdminUsers();
+      })
+      .catch(function (err) { showToast(err.message || "Could not create user", "error"); })
+      .finally(function () { btn.disabled = false; btn.innerHTML = '<i class="icon-check i"></i><span>Save user</span>'; });
+  },
+};
+
+function wireCreateUserModal() {
+  $("#btnCancelCreateUser").addEventListener("click", CreateUserModal.close);
+  $("#btnConfirmCreateUser").addEventListener("click", CreateUserModal.submit);
+}
 
 /* ============================================================
    PAGES - ADMIN: AUDIT LOG
@@ -3037,46 +3310,93 @@ PAGES.afterAdminAudit = function () {
   });
 };
 
+const SPLASH = {
+  messages: ["Getting things ready&hellip;", "Loading your records&hellip;", "Almost there&hellip;", "Just a moment&hellip;"],
+  timer: null, idx: 0,
+  show: function () {
+    $("#splash").classList.remove("hide");
+    SPLASH.idx = 0;
+    const el = $("#splashLabel");
+    if (el) el.innerHTML = SPLASH.messages[0];
+    clearInterval(SPLASH.timer);
+    SPLASH.timer = setInterval(function () {
+      SPLASH.idx = (SPLASH.idx + 1) % SPLASH.messages.length;
+      const label = $("#splashLabel");
+      if (!label) return;
+      label.style.opacity = 0;
+      setTimeout(function () { label.innerHTML = SPLASH.messages[SPLASH.idx]; label.style.opacity = .9; }, 220);
+    }, 1800);
+  },
+  // Shows the splash with a single fixed message, no cycling — used
+  // for short bridging transitions like sign-out.
+  showStatic: function (message) {
+    clearInterval(SPLASH.timer);
+    $("#splash").classList.remove("hide");
+    const el = $("#splashLabel");
+    if (el) { el.style.opacity = .9; el.innerHTML = message; }
+  },
+  hide: function () {
+    clearInterval(SPLASH.timer);
+    $("#splash").classList.add("hide");
+  },
+};
+
 /* ============================================================
-   ADMIN LOGIN MODAL
+   LOGIN GATE — shared for Executor / Verifier / Admin
    ============================================================ */
-function wireAdminModal() {
-  const modal = $("#adminLoginModal");
-  $("#btnAdminLogin").addEventListener("click", function () { modal.classList.add("open"); });
-  $("#btnCancelLogin").addEventListener("click", function () { modal.classList.remove("open"); });
+const LoginGate = {
+  show: function () { $("#loginGate").classList.add("show"); $("#app").classList.remove("ready"); },
+  hide: function () { $("#loginGate").classList.remove("show"); },
 
-  $("#btnDoLogin").addEventListener("click", function () {
-    const email = $("#loginEmail").value.trim();
-    const password = $("#loginPassword").value;
-    PAGES.validateField("fieldEmail", !!email);
-    PAGES.validateField("fieldPassword", !!password);
-    if (!email || !password) return;
+  wire: function () {
+    $("#btnGateLogin").addEventListener("click", LoginGate.submit);
+    $("#glUserId").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
+    $("#glPassword").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
 
-    const btn = $("#btnDoLogin");
+    const toggleBtn = $("#btnToggleGlPassword"), pwInput = $("#glPassword");
+    toggleBtn.addEventListener("click", function () {
+      const showing = pwInput.type === "text";
+      pwInput.type = showing ? "password" : "text";
+      toggleBtn.innerHTML = showing ? '<i class="icon-eye i"></i>' : '<i class="icon-eye-off i"></i>';
+      toggleBtn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+    });
+  },
+
+  submit: function () {
+    const userId = $("#glUserId").value.trim();
+    const password = $("#glPassword").value;
+    PAGES.validateField("glFieldId", !!userId);
+    PAGES.validateField("glFieldPassword", !!password);
+    if (!userId || !password) return;
+
+    const btn = $("#btnGateLogin");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Signing in&hellip;</span>';
 
-    AUTH.login(email, password).then(function () {
-      modal.classList.remove("open");
-      $("#loginEmail").value = ""; $("#loginPassword").value = "";
-      showToast("Welcome back, " + STATE.adminId + ".", "success");
-      UI.applyRoleToChrome();
-      return DATA.loadCompensationIfAdmin();
-    }).then(function () {
-      location.hash = "#/admin/analytics";
-      Router.render();
+    AUTH.login(userId, password).then(function () {
+      $("#glUserId").value = ""; $("#glPassword").value = "";
+      LoginGate.hide();
+      SPLASH.show();
+      boot2();
     }).catch(function (err) {
       showToast(err.message || "Sign-in failed. Check your credentials.", "error");
     }).finally(function () {
       btn.disabled = false; btn.innerHTML = '<i class="icon-log-in i"></i><span>Sign in</span>';
     });
-  });
+  },
+};
 
+function wireAdminModal() {
   $("#btnAdminLogout").addEventListener("click", function () {
+    $("#app").classList.remove("ready");
+    SPLASH.showStatic("Signing you out&hellip;");
     AUTH.logout().then(function () {
-      UI.applyRoleToChrome();
-      showToast("Signed out.", "success");
       location.hash = "#/dashboard";
-      Router.render();
+      SPLASH.hide();
+      LoginGate.show();
+      showToast("Signed out.", "success");
+    }).catch(function () {
+      SPLASH.hide();
+      LoginGate.show();
     });
   });
 }
@@ -3084,6 +3404,7 @@ function wireAdminModal() {
 function wireCompModal() {
   $("#btnCancelComp").addEventListener("click", CompModal.close);
   $("#btnSaveComp").addEventListener("click", CompModal.save);
+  $("#compStatus").addEventListener("change", CompModal.toggleReasonField);
 }
 
 function wireLightbox() {
@@ -3098,13 +3419,7 @@ function wireLightbox() {
 function wirePWA() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").then(function (reg) {
-      // If a new service worker is already waiting (installed while this
-      // tab was open), activate it immediately instead of waiting for
-      // every tab to close.
       if (reg.waiting) { reg.waiting.postMessage({ type: "SKIP_WAITING" }); }
-
-      // Whenever a new service worker finishes installing, tell it to
-      // activate right away rather than sitting "waiting".
       reg.addEventListener("updatefound", function () {
         const newWorker = reg.installing;
         if (!newWorker) return;
@@ -3114,22 +3429,8 @@ function wirePWA() {
           }
         });
       });
-
-      // NOTE: we deliberately do NOT call reg.update() here anymore.
-      // Forcing an eager update check on every single page load made
-      // every refresh compete, over the network, with the bootstrap
-      // data call - and any detected change immediately triggered a
-      // full second reload below, turning one refresh into two loads
-      // back-to-back. The browser already checks for a new sw.js on
-      // its own schedule (roughly every 24h, or whenever the tab is
-      // reloaded normally), which is enough for this app's needs.
     }).catch(function (err) { console.warn("SW registration failed:", err); });
 
-    // Once a new service worker takes control, reload so the page picks
-    // up the freshly cached index.html instead of the stale one already
-    // loaded in memory - but only once per browser session (persisted in
-    // sessionStorage, not just a JS variable, since a JS variable resets
-    // on every reload and can't prevent a reload loop across page loads).
     navigator.serviceWorker.addEventListener("controllerchange", function () {
       if (sessionStorage.getItem("rtcms_sw_reloaded")) return;
       sessionStorage.setItem("rtcms_sw_reloaded", "1");
@@ -3144,6 +3445,10 @@ function wirePWA() {
 
 /* ============================================================
    BOOT
+   ------------------------------------------------------------
+   boot() wires static chrome once and decides gate vs app.
+   boot2() is the "we now have a valid session" path - loads data
+   and shows the app. Both are idempotent-safe to call once each.
    ============================================================ */
 function boot() {
   wireAdminModal();
@@ -3151,21 +3456,35 @@ function boot() {
   wireLightbox();
   wirePWA();
   wirePhaseSystem();
+  wireCreateUserModal();
+  LoginGate.wire();
   SEARCH.wire();
   AUTH.restoreSession();
+
+  if (!STATE.isAuthed) {
+    $("#splash").classList.add("hide");
+    LoginGate.show();
+    return;
+  }
+  SPLASH.show();
+  boot2();
+}
+
+function boot2() {
   UI.applyRoleToChrome();
   Router.init();
 
   DATA.loadBootstrap()
-    .then(function () { return DATA.loadCompensationIfAdmin(); })
+    .then(function () { return DATA.loadCompensationIfAllowed(); })
     .then(function () { Router.render(); })
     .catch(function (err) {
       console.error(err);
+      if (err.code === "UNAUTHORIZED") { Router.forceLogout(); return; }
       showToast(err.message || "Could not reach the backend.", "error");
       $("#pageRoot").innerHTML = emptyState("icon-triangle-alert", "Could not load data", err.message || "Check CONFIG.apiUrl and that the Apps Script is deployed.");
     })
     .finally(function () {
-      $("#splash").classList.add("hide");
+      SPLASH.hide();
       $("#app").classList.add("ready");
     });
 }
