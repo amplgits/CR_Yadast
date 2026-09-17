@@ -216,6 +216,14 @@ nav.bottomnav a.active{color:var(--brand-2);}
 @keyframes refreshSpin{to{transform:rotate(360deg);}}
 @media (min-width:760px){ .refresh-app-btn{display:none;} }
 
+.mobile-back-btn{display:none;width:38px;height:38px;border-radius:10px;align-items:center;justify-content:center;
+  background:var(--surface-2);color:var(--ink-soft);border:none;flex-shrink:0;
+  transition:background .15s ease, transform .15s ease;}
+.mobile-back-btn svg{width:19px;height:19px;}
+.mobile-back-btn:active{transform:scale(0.88);background:var(--surface-3);}
+.mobile-back-btn.show{display:flex;}
+@media (min-width:760px){ .mobile-back-btn{display:none !important;} }
+
 /* ---------------- Mobile search overlay ---------------- */
 #mobileSearchSheet{
   position:fixed;inset:0;background:#fff;z-index:400;display:none;flex-direction:column;padding:14px 16px;
@@ -497,6 +505,9 @@ nav.bottomnav a.active{color:var(--brand-2);}
 <div id="app">
 
   <header class="topbar">
+    <button class="mobile-back-btn" id="btnMobileBack" aria-label="Back" title="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+    </button>
     <button class="refresh-app-btn" id="btnRefreshApp" aria-label="Refresh" title="Refresh">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
     </button>
@@ -3456,6 +3467,37 @@ function wireRefreshButton() {
   });
 }
 
+/* ---------------- Mobile "Back" button ----------------
+   Tracks the hash-route history within this session so the visible
+   back symbol can step to the previous screen even though this is a
+   single-page hash-routed app (the phone's own back gesture doesn't
+   reliably map to in-app navigation). */
+const NAV_HISTORY = { stack: [], navigatingBack: false };
+
+function trackNavHistory() {
+  const current = location.hash || "#/dashboard";
+  if (NAV_HISTORY.navigatingBack) { NAV_HISTORY.navigatingBack = false; }
+  else {
+    const last = NAV_HISTORY.stack[NAV_HISTORY.stack.length - 1];
+    if (last !== current) NAV_HISTORY.stack.push(current);
+  }
+  const btn = $("#btnMobileBack");
+  if (btn) btn.classList.toggle("show", NAV_HISTORY.stack.length > 1);
+}
+
+function wireMobileBack() {
+  window.addEventListener("hashchange", trackNavHistory);
+  trackNavHistory();
+  $("#btnMobileBack").addEventListener("click", function () {
+    if (NAV_HISTORY.stack.length > 1) {
+      NAV_HISTORY.stack.pop();
+      const prev = NAV_HISTORY.stack[NAV_HISTORY.stack.length - 1];
+      NAV_HISTORY.navigatingBack = true;
+      location.hash = prev;
+    }
+  });
+}
+
 /* ============================================================
    PWA: SERVICE WORKER + INSTALL PROMPT
    ============================================================ */
@@ -3498,6 +3540,7 @@ function boot() {
   wireCompModal();
   wireLightbox();
   wireRefreshButton();
+  wireMobileBack();
   wirePWA();
   wirePhaseSystem();
   wireCreateUserModal();
