@@ -2186,26 +2186,32 @@ const PKModal = {
 
     const viewNoticeBtn = $("#btnViewNoticeDoc");
     if (viewNoticeBtn) viewNoticeBtn.addEventListener("click", function () {
-      const pendingWin = window.open("", "_blank");
-      if (pendingWin) pendingWin.document.write("Loading notice document&hellip;");
+      // Mobile browsers (especially the installed PWA) frequently block
+      // or restrict window.open()+document.write() popups, which used
+      // to throw silently here and show a generic error. We now avoid
+      // popups entirely: images go to the in-app lightbox (works on any
+      // device) and PDFs are opened via a Blob object URL through a
+      // real, invisible <a> click, which mobile browsers handle reliably.
       const originalHtml = viewNoticeBtn.innerHTML;
       viewNoticeBtn.disabled = true; viewNoticeBtn.innerHTML = '<i class="icon-loader-circle i"></i><span>Loading&hellip;</span>';
       DATA.getNoticeDocument(PKModal.currentId).then(function (doc) {
         if (doc.mimeType === "application/pdf") {
-          if (pendingWin) {
-            pendingWin.document.open();
-            pendingWin.document.write('<iframe src="' + doc.base64Data + '" style="border:none;width:100%;height:100vh;"></iframe>');
-            pendingWin.document.close();
-          }
+          const base64 = doc.base64Data.split(",").pop();
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+          const a = document.createElement("a");
+          a.href = blobUrl; a.target = "_blank"; a.rel = "noopener";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 30000);
         } else {
-          if (pendingWin) pendingWin.close();
           $("#lbImage").src = doc.base64Data;
           $("#lbMeta").innerHTML = "Notice document &middot; " + escapeHtml(doc.fileName || "");
           $("#lightbox").classList.add("open");
         }
-      }).catch(function () {
-        if (pendingWin) pendingWin.close();
-        showToast("Could not load the notice document.", "error");
+      }).catch(function (err) {
+        showToast(err && err.message ? err.message : "Could not load the notice document.", "error");
       }).finally(function () {
         viewNoticeBtn.disabled = false; viewNoticeBtn.innerHTML = originalHtml;
       });
