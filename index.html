@@ -347,9 +347,23 @@ nav.bottomnav a.active{color:var(--brand-2);}
   align-items:center;justify-content:center;flex-direction:column;padding:20px;}
 #lightbox.open{display:flex;animation:fadeIn .2s ease;}
 #lightbox img{max-width:min(90vw,900px);max-height:72vh;border-radius:10px;object-fit:contain;}
+#lightbox img#lbImage{display:block;}
+#lightbox iframe#lbPdf{display:none;width:min(95vw,900px);height:80vh;border:none;border-radius:10px;background:#fff;}
+#lightbox.pdf-mode img#lbImage{display:none;}
+#lightbox.pdf-mode iframe#lbPdf{display:block;}
+#lightbox.loading img#lbImage,#lightbox.loading iframe#lbPdf{display:none;}
+#lightbox .lb-loading{display:none;color:#fff;font-size:13.5px;font-weight:600;align-items:center;gap:10px;}
+#lightbox.loading .lb-loading{display:flex;}
+#lightbox .lb-loading .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,0.3);
+  border-top-color:#fff;animation:lbspin .7s linear infinite;}
+@keyframes lbspin{to{transform:rotate(360deg);}}
 #lightbox .lb-meta{color:#fff;margin-top:14px;text-align:center;font-size:13px;opacity:.85;}
+#lightbox .lb-meta a{text-decoration:underline;}
 #lightbox .lb-close{position:absolute;top:18px;right:18px;width:40px;height:40px;border-radius:50%;
-  background:rgba(255,255,255,0.12);color:#fff;border:none;font-size:20px;display:flex;align-items:center;justify-content:center;}
+  background:rgba(255,255,255,0.12);color:#fff;border:none;font-size:20px;display:flex;align-items:center;justify-content:center;z-index:1;}
+@media (max-width:480px){
+  #lightbox iframe#lbPdf{height:74vh;}
+}
 
 /* ---------------- Upload dropzone ---------------- */
 .dropzone{border:2px dashed var(--border-strong);border-radius:var(--radius-md);padding:24px;text-align:center;
@@ -602,7 +616,9 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
 <div id="lightbox">
   <button class="lb-close" id="lbClose" style="font-size:18px;line-height:1;">✖</button>
+  <div class="lb-loading"><span class="spin"></span><span>Loading preview&hellip;</span></div>
   <img id="lbImage" src="" alt="Document preview">
+  <iframe id="lbPdf" src="" title="Document preview"></iframe>
   <div class="lb-meta" id="lbMeta"></div>
 </div>
 
@@ -1090,7 +1106,7 @@ const DATA = {
 
   getDocumentImage: function (docId) {
     if (STATE.documentImages[docId]) return Promise.resolve(STATE.documentImages[docId]);
-    return API.get("documentImage", { id: docId }).then(function (data) {
+    return API.get("documentImage", { id: docId, token: STATE.token }).then(function (data) {
       STATE.documentImages[docId] = data.imageData;
       return data.imageData;
     });
@@ -1098,7 +1114,7 @@ const DATA = {
 
   getDocumentThumbnail: function (docId) {
     if (STATE.documentThumbnails[docId]) return Promise.resolve(STATE.documentThumbnails[docId]);
-    return API.get("documentThumbnail", { id: docId }).then(function (data) {
+    return API.get("documentThumbnail", { id: docId, token: STATE.token }).then(function (data) {
       STATE.documentThumbnails[docId] = data.thumbData;
       return data.thumbData;
     });
@@ -1106,7 +1122,7 @@ const DATA = {
 
   getNoticeDocument: function (phaseKhataId) {
     if (STATE.noticeDocuments[phaseKhataId]) return Promise.resolve(STATE.noticeDocuments[phaseKhataId]);
-    return API.get("noticeDocument", { id: phaseKhataId }).then(function (doc) {
+    return API.get("noticeDocument", { id: phaseKhataId, token: STATE.token }).then(function (doc) {
       STATE.noticeDocuments[phaseKhataId] = doc;
       return doc;
     });
@@ -2186,25 +2202,11 @@ const PKModal = {
 
     const viewNoticeBtn = $("#btnViewNoticeDoc");
     if (viewNoticeBtn) viewNoticeBtn.addEventListener("click", function () {
-      const pendingWin = window.open("", "_blank");
-      if (pendingWin) pendingWin.document.write("Loading notice document&hellip;");
       const originalHtml = viewNoticeBtn.innerHTML;
       viewNoticeBtn.disabled = true; viewNoticeBtn.innerHTML = '<i class="icon-loader-circle i"></i><span>Loading&hellip;</span>';
       DATA.getNoticeDocument(PKModal.currentId).then(function (doc) {
-        if (doc.mimeType === "application/pdf") {
-          if (pendingWin) {
-            pendingWin.document.open();
-            pendingWin.document.write('<iframe src="' + doc.base64Data + '" style="border:none;width:100%;height:100vh;"></iframe>');
-            pendingWin.document.close();
-          }
-        } else {
-          if (pendingWin) pendingWin.close();
-          $("#lbImage").src = doc.base64Data;
-          $("#lbMeta").innerHTML = "Notice document &middot; " + escapeHtml(doc.fileName || "");
-          $("#lightbox").classList.add("open");
-        }
+        Lightbox.openData(doc.base64Data, doc.mimeType, "Notice document &middot; " + escapeHtml(doc.fileName || ""));
       }).catch(function () {
-        if (pendingWin) pendingWin.close();
         showToast("Could not load the notice document.", "error");
       }).finally(function () {
         viewNoticeBtn.disabled = false; viewNoticeBtn.innerHTML = originalHtml;
@@ -2875,18 +2877,46 @@ const IMPORT = {
    ============================================================ */
 const Lightbox = {
   open: function (doc) {
+    const lb = $("#lightbox");
+    lb.classList.remove("pdf-mode");
+    lb.classList.add("open", "loading");
     $("#lbImage").src = "";
+    $("#lbPdf").src = "";
     $("#lbMeta").innerHTML = escapeHtml(doc.documentType) + " &middot; " + escapeHtml(doc.fileName) + " &middot; " + fmtDate(doc.uploadedAt) +
       (CAN.fullControl() ? '<div class="mt-16"><button class="btn btn-danger btn-sm" id="lbDeleteBtn"><i class="icon-trash-2 i"></i>Delete</button></div>' : "");
-    $("#lightbox").classList.add("open");
-    DATA.getDocumentImage(doc.id).then(function (dataUrl) { $("#lbImage").src = dataUrl; })
-      .catch(function () { showToast("Could not load full image.", "error"); });
+    DATA.getDocumentImage(doc.id).then(function (dataUrl) {
+      $("#lbImage").src = dataUrl;
+      lb.classList.remove("loading");
+    }).catch(function () {
+      lb.classList.remove("loading");
+      showToast("Could not load full image.", "error");
+    });
     if (CAN.fullControl()) {
       const btn = $("#lbDeleteBtn");
       if (btn) btn.addEventListener("click", function () { Lightbox.close(); UPLOAD.deleteDoc(doc); });
     }
   },
-  close: function () { $("#lightbox").classList.remove("open"); },
+  // Opens a lightbox preview directly from base64 data + mimeType.
+  // Used for content (like the notice document) that can be either
+  // an image or a PDF, so it always previews inline - no new tab,
+  // which is what makes it work reliably on mobile too.
+  openData: function (dataUrl, mimeType, metaHtml) {
+    const lb = $("#lightbox");
+    const isPdf = mimeType === "application/pdf";
+    lb.classList.toggle("pdf-mode", isPdf);
+    lb.classList.add("open");
+    lb.classList.remove("loading");
+    $("#lbMeta").innerHTML = (metaHtml || "") +
+      (isPdf ? '<div class="mt-16"><a href="' + dataUrl + '" download>Download PDF</a> &middot; <a href="' + dataUrl + '" target="_blank" rel="noopener">Open in new tab</a></div>' : "");
+    if (isPdf) { $("#lbImage").src = ""; $("#lbPdf").src = dataUrl; }
+    else { $("#lbPdf").src = ""; $("#lbImage").src = dataUrl; }
+  },
+  close: function () {
+    const lb = $("#lightbox");
+    lb.classList.remove("open", "pdf-mode", "loading");
+    $("#lbImage").src = "";
+    $("#lbPdf").src = "";
+  },
 };
 
 function loadThumbnails(scopeSelector) {
