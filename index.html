@@ -1702,10 +1702,10 @@ PAGES.phaseCardHtml = function (p) {
   const paid = views.filter(function (v) { return v.compensationReceived; }).length;
   const escalated = views.filter(function (v) { return v.hasEscalation; }).length;
   return '<div class="entity-card" data-nav="#/phases/' + p.id + '" style="position:relative;">' +
-    (CAN.isAdminOnly()
+    (CAN.fullControl() || CAN.isAdminOnly()
       ? '<div style="position:absolute;top:12px;right:12px;display:flex;gap:6px;">' +
-        '<button class="btn btn-ghost btn-sm" data-rename-phase="' + p.id + '" data-phase-internal-name="' + escapeHtml(p.name) + '" data-phase-display-name="' + escapeHtml(p.displayName || "") + '" style="padding:5px 8px;font-size:14px;line-height:1;" title="Rename phase">\u270E</button>' +
-        '<button class="btn btn-ghost btn-sm" data-delete-phase="' + p.id + '" data-phase-name="' + escapeHtml(DATA.phaseDisplayName(p)) + '" style="padding:5px 8px;font-size:14px;line-height:1;color:var(--rose-1);" title="Delete phase">\u2716</button>' +
+        (CAN.fullControl() ? '<button class="btn btn-ghost btn-sm" data-rename-phase="' + p.id + '" data-phase-internal-name="' + escapeHtml(p.name) + '" data-phase-display-name="' + escapeHtml(p.displayName || "") + '" style="padding:5px 8px;font-size:14px;line-height:1;" title="Rename phase">\u270E</button>' : '') +
+        (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" data-delete-phase="' + p.id + '" data-phase-name="' + escapeHtml(DATA.phaseDisplayName(p)) + '" style="padding:5px 8px;font-size:14px;line-height:1;color:var(--rose-1);" title="Delete phase">\u2716</button>' : '') +
         '</div>'
       : '') +
     '<div class="eyebrow">PHASE</div><h3>' + escapeHtml(DATA.phaseDisplayName(p)) + '</h3>' +
@@ -1795,7 +1795,7 @@ PAGES.phaseDetail = function (phaseId) {
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/phases">Phases</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(DATA.phaseDisplayName(phase)) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(DATA.phaseDisplayName(phase)) + '</h1><p>' + total + ' khata(s) enlisted in this phase.</p></div>' +
     '<div class="flex gap-8">' +
-    (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" id="btnRenamePhaseDetail"><i class="icon-pencil i"></i>Rename</button>' : '') +
+    (CAN.fullControl() ? '<button class="btn btn-ghost btn-sm" id="btnRenamePhaseDetail"><i class="icon-pencil i"></i>Rename</button>' : '') +
     (CAN.isAdminOnly() ? '<button class="btn btn-danger btn-sm" id="btnDeletePhaseDetail"><i class="icon-trash-2 i"></i>Delete phase</button>' : '') +
     (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button>' : '') +
     '</div></div>' +
@@ -2901,7 +2901,7 @@ const Lightbox = {
     $("#lbImage").src = "";
     $("#lbPdf").src = "";
     $("#lbMeta").innerHTML = escapeHtml(doc.documentType) + " &middot; " + escapeHtml(doc.fileName) + " &middot; " + fmtDate(doc.uploadedAt) +
-      (CAN.fullControl() ? '<div class="mt-16"><button class="btn btn-danger btn-sm" id="lbDeleteBtn"><i class="icon-trash-2 i"></i>Delete</button></div>' : "");
+      (CAN.isAdminOnly() ? '<div class="mt-16"><button class="btn btn-danger btn-sm" id="lbDeleteBtn"><i class="icon-trash-2 i"></i>Delete</button></div>' : "");
     DATA.getDocumentImage(doc.id).then(function (dataUrl) {
       $("#lbImage").src = dataUrl;
       lb.classList.remove("loading");
@@ -2909,7 +2909,7 @@ const Lightbox = {
       lb.classList.remove("loading");
       showToast("Could not load full image.", "error");
     });
-    if (CAN.fullControl()) {
+    if (CAN.isAdminOnly()) {
       const btn = $("#lbDeleteBtn");
       if (btn) btn.addEventListener("click", function () { Lightbox.close(); UPLOAD.deleteDoc(doc); });
     }
