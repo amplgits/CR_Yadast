@@ -578,6 +578,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <a href="#/dashboard" class="navitem role-nav-dashboard" data-route="dashboard"><i class="icon-layout-dashboard i"></i>Dashboard</a>
     <a href="#/phases" class="navitem role-nav-phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
     <a href="#/blocks" class="navitem role-nav-blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
+    <a href="#/villages" class="navitem role-nav-villages" data-route="villages"><i class="icon-map-pin i"></i>Villages</a>
     <a href="#/khatas" class="navitem role-nav-khatas" data-route="khatas"><i class="icon-file-text i"></i>All Khatas</a>
     <a href="#/documents" class="navitem role-nav-documents" data-route="documents"><i class="icon-folder i"></i>Documents</a>
 
@@ -600,6 +601,10 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <a href="#/blocks" class="role-nav-blocks" data-route="blocks">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
       Blocks
+    </a>
+    <a href="#/villages" class="role-nav-villages" data-route="villages">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
+      Villages
     </a>
     <a href="#/khatas" class="role-nav-khatas" data-route="khatas">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
@@ -1183,6 +1188,20 @@ const DATA = {
     return DATA.khataList().filter(function (k) { return k.blockId === blockId; });
   },
 
+    khatasForBlock: function (blockId) {
+    return DATA.khataList().filter(function (k) { return k.blockId === blockId; });
+  },
+
+  villageList: function () {
+    const seen = {};
+    DATA.khataList().forEach(function (k) { const v = (k.location || {}).village; if (v) seen[v] = true; });
+    return Object.keys(seen).sort();
+  },
+
+  khatasForVillage: function (villageName) {
+    return DATA.khataList().filter(function (k) { return (k.location || {}).village === villageName; });
+  },
+
   documentsForKhata: function (khataId) {
     return Object.keys(STATE.documents)
       .map(function (id) { return Object.assign({ id: id }, STATE.documents[id]); })
@@ -1382,6 +1401,7 @@ const Router = {
     if (parts.length === 0) return { name: "dashboard", params: {} };
     if (parts[0] === "admin") return { name: parts[1] || "analytics", params: { id: parts[2] } };
     if (parts[0] === "blocks" && parts[1]) return { name: "blockDetail", params: { id: parts[1] } };
+    if (parts[0] === "villages" && parts[1]) return { name: "villageDetail", params: { id: decodeURIComponent(parts[1]) } };
     if (parts[0] === "khata" && parts[1]) return { name: "khataDetail", params: { id: parts[1], tab: parts[2] } };
     if (parts[0] === "phases" && parts[1]) return { name: "phaseDetail", params: { id: parts[1] } };
     return { name: parts[0], params: {} };
@@ -1409,7 +1429,7 @@ const Router = {
     STATE.currentRoute = route;
     UI.setActiveNav = UI.setActiveNav || function () {};
     $all("[data-route]").forEach(function (el) {
-      const r = route.name === "blockDetail" ? "blocks" : route.name === "khataDetail" ? "khatas" : route.name === "phaseDetail" ? "phases" : route.name;
+      const r = route.name === "blockDetail" ? "blocks" : route.name === "villageDetail" ? "villages" : route.name === "khataDetail" ? "khatas" : route.name === "phaseDetail" ? "phases" : route.name;
       el.classList.toggle("active", el.getAttribute("data-route") === r);
     });
 
@@ -1420,6 +1440,8 @@ const Router = {
       case "phaseDetail": root.innerHTML = PAGES.phaseDetail(route.params.id); PAGES.afterPhaseDetail(route.params.id); break;
       case "blocks": root.innerHTML = PAGES.blocksList(); PAGES.afterEntityGrid(); break;
       case "blockDetail": root.innerHTML = PAGES.blockDetail(route.params.id); PAGES.afterEntityGrid(); break;
+      case "villages": root.innerHTML = PAGES.villagesList(); PAGES.afterEntityGrid(); break;
+      case "villageDetail": root.innerHTML = PAGES.villageDetail(route.params.id); PAGES.afterEntityGrid(); break;
       case "khatas": root.innerHTML = PAGES.khatasList(); PAGES.afterEntityGrid(); break;
       case "khataDetail": root.innerHTML = PAGES.khataDetail(route.params.id); PAGES.afterKhataDetail(route.params.id, route.params.tab); break;
       case "documents": root.innerHTML = PAGES.documentsPage(); PAGES.afterDocumentsPage(); break;
@@ -1490,6 +1512,39 @@ PAGES.blockCardsHtml = function (blockIds) {
     return '<div class="entity-card" data-nav="#/blocks/' + id + '"><div class="eyebrow">' + escapeHtml(b.blockCode || "BLOCK") + "</div><h3>" + escapeHtml(b.blockName) + '</h3><div class="meta"><span><i class="icon-map-pin i"></i>' + escapeHtml(loc.village || "&mdash;") + '</span><span><i class="icon-file-text i"></i>' + count + " khatas</span></div></div>";
   }).join("") + "</div>";
 };
+
+PAGES.villageCardsHtml = function (villageNames) {
+  if (!villageNames.length) return emptyState("icon-map-pin", "No villages yet", "Villages will appear here once khatas with a village are added.");
+  return '<div class="grid-cards mt-16">' + villageNames.map(function (name) {
+    const count = DATA.khatasForVillage(name).length;
+    return '<div class="entity-card" data-nav="#/villages/' + encodeURIComponent(name) + '"><div class="eyebrow">VILLAGE</div><h3>' + escapeHtml(name) + '</h3><div class="meta"><span><i class="icon-file-text i"></i>' + count + " khatas</span></div></div>";
+  }).join("") + "</div>";
+};
+
+PAGES.villagesList = function () {
+  const names = DATA.villageList();
+  return (
+    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Villages</div>' +
+    '<div class="page-head"><div><h1>Villages</h1><p>' + names.length + ' village(s) on record.</p></div></div>' +
+    (STATE.loaded ? PAGES.villageCardsHtml(names) : skeletonCards(4))
+  );
+};
+
+PAGES.villageDetail = function (villageName) {
+  if (!STATE.loaded) return skeletonCards(4);
+  const khatas = DATA.khatasForVillage(villageName).sort(function (a, b) {
+    return String(a.khataNumber || "").localeCompare(String(b.khataNumber || ""), undefined, { numeric: true });
+  });
+  if (!khatas.length) return emptyState("icon-triangle-alert", "Village not found", "No khatas are recorded for this village.");
+  return (
+    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/villages">Villages</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(villageName) + "</div>" +
+    '<div class="page-head"><div><h1>' + escapeHtml(villageName) + "</h1></div></div>" +
+    '<div class="section-title">Khatas in this village <span class="muted">' + khatas.length + " total</span></div>" +
+    PAGES.khataCardsHtml(khatas, { emptyMsg: "No khatas match this filter." })
+  );
+};
+
+
 
 PAGES.blocksList = function () {
   const ids = Object.keys(STATE.blocks);
