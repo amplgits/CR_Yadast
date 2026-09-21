@@ -484,6 +484,12 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .gap-8{gap:8px;} .gap-12{gap:12px;} .mt-8{margin-top:8px;} .mt-16{margin-top:16px;} .mb-16{margin-bottom:16px;}
 .text-mute{color:var(--ink-mute);} .text-sm{font-size:12.5px;} .hidden{display:none !important;}
 
+/* DD-MM-YYYY date field: visible text + invisible native date picker on top */
+.dmy-date{position:relative;display:inline-block;}
+.dmy-date .dmy-text{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1.5px solid var(--border);border-radius:9px;padding:0 12px;background:#fff;font-size:14px;color:var(--ink);white-space:nowrap;}
+.dmy-date .dmy-text::after{content:"\1F4C5";font-size:13px;}
+.dmy-date input[type="date"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;border:0;}
+
 /* ---------------- Password field with show/hide toggle ---------------- */
 .field.has-toggle{position:relative;}
 .field.has-toggle input{padding-right:44px;}
@@ -907,6 +913,20 @@ function dmyToISO(dmy) {
 }
 
 function yesterdayDMY() { return isoToDMY(yesterdayISO()); }
+
+function todayISO() {
+  const d = new Date();
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+/* Date field that displays DD-MM-YYYY but keeps a native date input (ISO value) underneath */
+function dmyDateFieldHtml(iso, inputAttrs, wrapStyle, boxStyle) {
+  return '<span class="dmy-date" style="' + wrapStyle + '">' +
+    '<span class="dmy-text" style="' + boxStyle + '">' + escapeHtml(isoToDMY(iso)) + '</span>' +
+    '<input type="date" ' + inputAttrs + ' value="' + escapeHtml(iso) + '">' +
+    '</span>';
+}
 
 function daysOpen(ts) {
   if (!ts) return "&mdash;";
@@ -2052,6 +2072,7 @@ const PKModal = {
 
   open: function (pkId) {
     PKModal.currentId = pkId;
+    PKModal.noticeDateISO = null; // default back to today each time
     PKModal.render();
     $("#pkDetailModal").classList.add("open");
   },
@@ -2059,13 +2080,13 @@ const PKModal = {
 
     noticeSectionHtml: function (noticeList) {
     const selType = PKModal.noticeType || NOTICE_TYPES[0];
-    const dateISO = PKModal.noticeDateISO || yesterdayISO();
+    const dateISO = PKModal.noticeDateISO || todayISO();
     let html = '<div class="field"><label>Notice documents</label>' +
       '<div class="flex gap-8" style="flex-wrap:wrap;">' +
       '<select id="noticeTypeSelect" style="flex:1;min-width:130px;width:auto;">' +
       NOTICE_TYPES.map(function (t) { return '<option value="' + t + '"' + (t === selType ? " selected" : "") + '>' + t + ' notice</option>'; }).join("") +
       '</select>' +
-      '<input type="date" id="noticeDateInput" value="' + escapeHtml(dateISO) + '" style="flex:1;min-width:140px;width:auto;">' +
+      dmyDateFieldHtml(dateISO, 'id="noticeDateInput"', "flex:1;min-width:140px;display:block;", "height:42px;") +
       '</div>' +
       '<div class="mt-8"><label class="btn btn-primary btn-sm"><i class="icon-upload i"></i><span>Upload notice(s) (image/PDF)</span><input type="file" accept="image/*,application/pdf" multiple id="noticeDocInput" style="display:none;"></label></div>' +
       '<span class="text-sm text-mute" style="display:block;margin-top:6px;">Pick the notice type and date, then choose one or more files. At least one notice is required before &ldquo;Notice served&rdquo; can be checked.</span>';
@@ -2077,7 +2098,7 @@ const PKModal = {
       items.forEach(function (n) {
         html += '<div class="sub-item-card" style="align-items:center;padding:10px 12px;">' +
           '<div style="min-width:0;flex:1;"><div class="name" style="word-break:break-all;">' + escapeHtml(n.fileName || "Notice") + '</div>' +
-          '<div class="details">Notice date: <input type="date" data-notice-date="' + n.id + '" value="' + escapeHtml(dmyToISO(n.noticeDate)) + '" style="width:auto;height:30px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:0 6px;"></div></div>' +
+          '<div class="details">Notice date: ' + dmyDateFieldHtml(dmyToISO(n.noticeDate), 'data-notice-date="' + n.id + '"', "vertical-align:middle;", "height:30px;font-size:12px;padding:0 8px;border-radius:7px;") + '</div></div>' +
           '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
           '<button class="btn btn-ghost btn-sm" data-notice-view="' + n.id + '"><i class="icon-eye i"></i>View</button>' +
           (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" data-notice-download="' + n.id + '" title="Download" aria-label="Download" style="font-size:14px;line-height:1;padding:6px 10px;">\u2B07\uFE0E</button>' : '') +
@@ -2230,6 +2251,17 @@ const PKModal = {
     const dateIn = $("#noticeDateInput");
     if (dateIn) dateIn.addEventListener("change", function (e) { PKModal.noticeDateISO = e.target.value; });
 
+    // DD-MM-YYYY date fields: open the calendar on click, refresh the visible text on change
+    $all(".dmy-date input[type=date]").forEach(function (inp) {
+      inp.addEventListener("click", function () {
+        try { if (inp.showPicker) inp.showPicker(); } catch (err) {}
+      });
+      inp.addEventListener("change", function () {
+        const t = inp.parentNode.querySelector(".dmy-text");
+        if (t) t.textContent = isoToDMY(inp.value);
+      });
+    });
+
     // ---- Upload (multiple files, sequential) ----
     const noticeDocInput = $("#noticeDocInput");
     if (noticeDocInput) noticeDocInput.addEventListener("change", function (e) {
@@ -2237,7 +2269,7 @@ const PKModal = {
       e.target.value = "";
       if (!files.length) return;
       const noticeType = ($("#noticeTypeSelect") || {}).value || NOTICE_TYPES[0];
-      const noticeDate = isoToDMY(($("#noticeDateInput") || {}).value || yesterdayISO());
+      const noticeDate = isoToDMY(($("#noticeDateInput") || {}).value || todayISO());
       const target = { khataId: PKModal.currentKhataId, phaseId: PKModal.currentPhaseId };
       showToast("Uploading " + files.length + " " + noticeType.toLowerCase() + " notice file(s)...");
       let chain = Promise.resolve();
