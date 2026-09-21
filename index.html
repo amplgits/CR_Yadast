@@ -422,6 +422,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:450;display:none;
   align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);}
 .modal-backdrop.open{display:flex;animation:fadeIn .18s ease;}
+#confirmModal{z-index:470;}
 .modal{background:#fff;border-radius:var(--radius-lg);max-width:420px;width:100%;padding:26px;
   box-shadow:var(--shadow-lg);animation:modalIn .22s ease;max-height:88vh;overflow-y:auto;}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:none;}}
@@ -781,6 +782,14 @@ const OPTIONAL_DOC_TYPES = [
 ];
 const MANDATORY_DOC_TYPES = DOC_TYPES.filter(function (t) { return OPTIONAL_DOC_TYPES.indexOf(t) === -1; });
 
+const NOTICE_TYPES = ["Land", "Structure", "Tree", "Block"];
+
+function noticeDocList(pk) {
+  const map = (pk && pk.noticeDocuments) || {};
+  return Object.keys(map).map(function (id) { return Object.assign({ id: id }, map[id]); })
+    .sort(function (a, b) { return (a.uploadedAt || 0) - (b.uploadedAt || 0); });
+}
+
 /* ============================================================
    ROLE MODEL
    ------------------------------------------------------------
@@ -1138,10 +1147,10 @@ const DATA = {
     });
   },
 
-  getNoticeDocument: function (phaseKhataId) {
-    if (STATE.noticeDocuments[phaseKhataId]) return Promise.resolve(STATE.noticeDocuments[phaseKhataId]);
-    return API.get("noticeDocument", { id: phaseKhataId, token: STATE.token }).then(function (doc) {
-      STATE.noticeDocuments[phaseKhataId] = doc;
+    getNoticeDocument: function (phaseKhataId, noticeId) {
+    if (STATE.noticeDocuments[noticeId]) return Promise.resolve(STATE.noticeDocuments[noticeId]);
+    return API.get("noticeDocument", { id: phaseKhataId, noticeId: noticeId, token: STATE.token }).then(function (doc) {
+      STATE.noticeDocuments[noticeId] = doc;
       return doc;
     });
   },
@@ -2038,6 +2047,8 @@ const EnlistModal = {
  * to them as it always was open to everyone in the field. */
 const PKModal = {
   currentId: null,
+  noticeType: "Land",
+  noticeDateISO: null,
 
   open: function (pkId) {
     PKModal.currentId = pkId;
@@ -2045,6 +2056,83 @@ const PKModal = {
     $("#pkDetailModal").classList.add("open");
   },
   close: function () { $("#pkDetailModal").classList.remove("open"); },
+
+    noticeSectionHtml: function (noticeList) {
+    const selType = PKModal.noticeType || NOTICE_TYPES[0];
+    const dateISO = PKModal.noticeDateISO || yesterdayISO();
+    let html = '<div class="field"><label>Notice documents</label>' +
+      '<div class="flex gap-8" style="flex-wrap:wrap;">' +
+      '<select id="noticeTypeSelect" style="flex:1;min-width:130px;width:auto;">' +
+      NOTICE_TYPES.map(function (t) { return '<option value="' + t + '"' + (t === selType ? " selected" : "") + '>' + t + ' notice</option>'; }).join("") +
+      '</select>' +
+      '<input type="date" id="noticeDateInput" value="' + escapeHtml(dateISO) + '" style="flex:1;min-width:140px;width:auto;">' +
+      '</div>' +
+      '<div class="mt-8"><label class="btn btn-primary btn-sm"><i class="icon-upload i"></i><span>Upload notice(s) (image/PDF)</span><input type="file" accept="image/*,application/pdf" multiple id="noticeDocInput" style="display:none;"></label></div>' +
+      '<span class="text-sm text-mute" style="display:block;margin-top:6px;">Pick the notice type and date, then choose one or more files. At least one notice is required before &ldquo;Notice served&rdquo; can be checked.</span>';
+
+    NOTICE_TYPES.forEach(function (type) {
+      const items = noticeList.filter(function (n) { return n.noticeType === type; });
+      if (!items.length) return;
+      html += '<div style="margin-top:12px;"><div class="text-sm" style="font-weight:700;margin-bottom:6px;">' + type + ' notices (' + items.length + ')</div>';
+      items.forEach(function (n) {
+        html += '<div class="sub-item-card" style="align-items:center;padding:10px 12px;">' +
+          '<div style="min-width:0;flex:1;"><div class="name" style="word-break:break-all;">' + escapeHtml(n.fileName || "Notice") + '</div>' +
+          '<div class="details">Notice date: <input type="date" data-notice-date="' + n.id + '" value="' + escapeHtml(dmyToISO(n.noticeDate)) + '" style="width:auto;height:30px;font-size:12px;border:1.5px solid var(--border);border-radius:7px;padding:0 6px;"></div></div>' +
+          '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
+          '<button class="btn btn-ghost btn-sm" data-notice-view="' + n.id + '"><i class="icon-eye i"></i>View</button>' +
+          (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" data-notice-download="' + n.id + '" title="Download" aria-label="Download" style="font-size:14px;line-height:1;padding:6px 10px;">\u2B07\uFE0E</button>' : '') +
+          (CAN.fullControl() ? '<button class="btn btn-danger btn-sm" data-notice-delete="' + n.id + '" title="Delete" aria-label="Delete" style="font-size:14px;line-height:1;padding:6px 10px;">\u2716</button>' : '') +
+          '</div></div>';
+      });
+      html += '</div>';
+    });
+    return html + '</div>';
+  },
+
+  uploadNotice: function (file, noticeType, noticeDate, target) {
+    const isPdf = file.type === "application/pdf";
+    const isImage = /^image\//.test(file.type);
+    if (!isPdf && !isImage) { showToast(file.name + " isn't an image or PDF - skipped.", "error"); return Promise.resolve(); }
+
+    const readFile = isImage
+      ? UPLOAD.compress(file).then(function (variants) { return variants.full; })
+      : new Promise(function (resolve, reject) {
+          const reader = new FileReader();
+          reader.onload = function () { resolve(reader.result); };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+    return readFile.then(function (base64Data) {
+      const pkId = Object.keys(STATE.phaseKhatas).find(function (id) {
+        const p = STATE.phaseKhatas[id];
+        return id.indexOf("temp_") !== 0 && p.khataId === target.khataId && p.phaseId === target.phaseId;
+      });
+      if (!pkId) throw new Error("This record has changed \u2014 please reopen it and try again.");
+
+      return API.post("setNoticeDocument", {
+        phaseKhataId: pkId, noticeType: noticeType, fileName: file.name,
+        mimeType: isImage ? "image/jpeg" : file.type, base64Data: base64Data, noticeDate: noticeDate,
+      }).then(function (data) {
+        const pk = STATE.phaseKhatas[pkId];
+        if (pk) {
+          pk.noticeDocuments = pk.noticeDocuments || {};
+          pk.noticeDocuments[data.noticeId] = {
+            noticeType: noticeType, fileName: file.name, mimeType: isImage ? "image/jpeg" : file.type,
+            noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.userId || "Public User",
+          };
+        }
+        showToast(noticeType + " notice uploaded.", "success");
+        if (PKModal.currentKhataId === target.khataId && PKModal.currentPhaseId === target.phaseId) {
+          PKModal.resolveCurrentId();
+          PKModal.render();
+        }
+        Router.render();
+      });
+    }).catch(function (err) {
+      showToast(err.message || ("Could not upload " + file.name), "error");
+    });
+  },
 
   resolveCurrentId: function () {
     if (STATE.phaseKhatas[PKModal.currentId]) return PKModal.currentId;
@@ -2066,31 +2154,14 @@ const PKModal = {
     const khataId = pk.khataId;
     const readyForVerify = v.noticeServed && v.docsCollected;
 
-    const noticeDoc = pk.noticeDocument || null;
-    const noticeDateDMY = noticeDoc && noticeDoc.noticeDate ? noticeDoc.noticeDate : yesterdayDMY();
-    const noticeDateISO = noticeDoc && noticeDoc.noticeDate ? dmyToISO(noticeDoc.noticeDate) : yesterdayISO();
+    const noticeList = noticeDocList(pk);
+    const noticeDoc = noticeList.length ? noticeList[0] : null; // truthy = at least one notice exists (used by the "Notice served" checkbox below)
 
     let html = '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
       '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
       '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.block.blockName || "") + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
 
-      '<div class="field"><label>Notice document</label>' +
-      '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
-      (noticeDoc
-        ? '<span class="badge badge-green"><i class="icon-file-check i"></i>' + escapeHtml(noticeDoc.fileName || "Notice uploaded") + '</span>' +
-          '<button class="btn btn-ghost btn-sm" id="btnViewNoticeDoc"><i class="icon-eye i"></i>View</button>' +
-          (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" id="btnDownloadNoticeDoc"><i class="icon-download i"></i>Download</button>' : '') +
-          '<label class="btn btn-ghost btn-sm"><i class="icon-upload i"></i><span>Replace</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>' +
-          (CAN.isAdminOnly() ? '<button class="btn btn-danger btn-sm" id="btnDeleteNoticeDoc"><i class="icon-trash-2 i"></i>Delete</button>' : '')
-        : '<label class="btn btn-primary btn-sm"><i class="icon-upload i"></i><span>Upload notice (image/PDF)</span><input type="file" accept="image/*,application/pdf" id="noticeDocInput" style="display:none;"></label>') +
-      '</div>' +
-      (!noticeDoc ? '<span class="text-sm text-mute" style="display:block;margin-top:6px;">Required before &ldquo;Notice served&rdquo; can be checked.</span>' : '') +
-      '</div>' +
-
-      '<div class="field"><label>Notice date</label>' +
-      '<input type="date" id="noticeDateInput" value="' + escapeHtml(noticeDateISO) + '">' +
-      '<span class="text-sm text-mute" id="noticeDateDisplay" style="display:block;margin-top:6px;">' + escapeHtml(noticeDateDMY) + '</span>' +
-      '</div>' +
+       PKModal.noticeSectionHtml(noticeList) +
 
       // Notice served checkbox: full control (Verifier/Admin) can toggle
       // it. Executor sees it always disabled - checkbox state is
@@ -2153,127 +2224,121 @@ const PKModal = {
       ReportPDF.generate(PKModal.currentId);
     });
 
+        // ---- Notice type / date memory (so the choice survives re-renders) ----
+    const typeSel = $("#noticeTypeSelect");
+    if (typeSel) typeSel.addEventListener("change", function (e) { PKModal.noticeType = e.target.value; });
+    const dateIn = $("#noticeDateInput");
+    if (dateIn) dateIn.addEventListener("change", function (e) { PKModal.noticeDateISO = e.target.value; });
+
+    // ---- Upload (multiple files, sequential) ----
     const noticeDocInput = $("#noticeDocInput");
     if (noticeDocInput) noticeDocInput.addEventListener("change", function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const isPdf = file.type === "application/pdf";
-      const isImage = /^image\//.test(file.type);
-      if (!isPdf && !isImage) { showToast("Notice must be an image or a PDF.", "error"); e.target.value = ""; return; }
-      const isoVal = ($("#noticeDateInput") || {}).value || yesterdayISO();
-      const noticeDate = isoToDMY(isoVal);
-
-      const finishUpload = function (base64Data) {
-        const pkId = PKModal.resolveCurrentId();
-        if (!pkId) {
-          showToast("This record has changed — please reopen it and try again.", "error");
-          PKModal.close();
-          return;
-        }
-        const pk = STATE.phaseKhatas[pkId];
-        const prevDoc = pk.noticeDocument;
-        pk.noticeDocument = { fileName: file.name, mimeType: file.type, noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.userId || "Public User" };
-        Router.render(); PKModal.render();
-        showToast("Notice document uploaded.", "success");
-        API.post("setNoticeDocument", {
-          phaseKhataId: pkId, fileName: file.name, mimeType: file.type,
-          base64Data: base64Data, noticeDate: noticeDate,
-        }).then(function () { delete STATE.noticeDocuments[pkId]; DATA.refreshQuietly(); })
-          .catch(function (err) {
-            pk.noticeDocument = prevDoc;
-            Router.render(); PKModal.render();
-            showToast(err.message || "Could not upload notice document", "error");
-          });
-      };
-
-      if (isImage) {
-        UPLOAD.compress(file).then(function (variants) { finishUpload(variants.full); })
-          .catch(function () { showToast("Could not read that image.", "error"); });
-      } else {
-        const reader = new FileReader();
-        reader.onload = function () { finishUpload(reader.result); };
-        reader.onerror = function () { showToast("Could not read that file.", "error"); };
-        reader.readAsDataURL(file);
-      }
-    });
-
-    const noticeDateInput = $("#noticeDateInput");
-    if (noticeDateInput) noticeDateInput.addEventListener("change", function (e) {
-      const dmy = isoToDMY(e.target.value);
-      const display = $("#noticeDateDisplay");
-      if (display) display.textContent = dmy;
-
-      const pkId = PKModal.currentId;
-      const pkNow = STATE.phaseKhatas[pkId];
-      if (!pkNow || !pkNow.noticeDocument) return;
-      const prevDate = pkNow.noticeDocument.noticeDate;
-      pkNow.noticeDocument.noticeDate = dmy;
-      showToast("Notice date updated.", "success");
-      API.post("updateNoticeDate", { phaseKhataId: pkId, noticeDate: dmy })
-        .then(function () { delete STATE.noticeDocuments[pkId]; DATA.refreshQuietly(); })
-        .catch(function (err) {
-          pkNow.noticeDocument.noticeDate = prevDate;
-          Router.render();
-          showToast(err.message || "Could not update notice date", "error");
-        });
-    });
-
-    const viewNoticeBtn = $("#btnViewNoticeDoc");
-    if (viewNoticeBtn) viewNoticeBtn.addEventListener("click", function () {
-      const originalHtml = viewNoticeBtn.innerHTML;
-      viewNoticeBtn.disabled = true; viewNoticeBtn.innerHTML = '<i class="icon-loader-circle i"></i><span>Loading&hellip;</span>';
-      DATA.getNoticeDocument(PKModal.currentId).then(function (doc) {
-        Lightbox.openData(doc.base64Data, doc.mimeType, "Notice document &middot; " + escapeHtml(doc.fileName || ""));
-      }).catch(function () {
-        showToast("Could not load the notice document.", "error");
-      }).finally(function () {
-        viewNoticeBtn.disabled = false; viewNoticeBtn.innerHTML = originalHtml;
+      const files = Array.from(e.target.files || []);
+      e.target.value = "";
+      if (!files.length) return;
+      const noticeType = ($("#noticeTypeSelect") || {}).value || NOTICE_TYPES[0];
+      const noticeDate = isoToDMY(($("#noticeDateInput") || {}).value || yesterdayISO());
+      const target = { khataId: PKModal.currentKhataId, phaseId: PKModal.currentPhaseId };
+      showToast("Uploading " + files.length + " " + noticeType.toLowerCase() + " notice file(s)...");
+      let chain = Promise.resolve();
+      files.forEach(function (file) {
+        chain = chain.then(function () { return PKModal.uploadNotice(file, noticeType, noticeDate, target); });
       });
+      chain.then(function () { DATA.refreshQuietly(); });
     });
 
-    const deleteNoticeBtn = $("#btnDeleteNoticeDoc");
-    if (deleteNoticeBtn) deleteNoticeBtn.addEventListener("click", function () {
-      confirmDialog(
-        "Delete this notice document?",
-        "This removes the uploaded notice file and un-marks \u201cNotice served\u201d for this khata. This cannot be undone.",
-        "Delete"
-      ).then(function (ok) {
-        if (!ok) return;
+    // ---- Edit date of an individual notice ----
+    $all("[data-notice-date]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        if (!inp.value) return;
+        const noticeId = inp.getAttribute("data-notice-date");
+        const dmy = isoToDMY(inp.value);
         const pkId = PKModal.currentId;
         const pk = STATE.phaseKhatas[pkId];
-        const prevDoc = pk.noticeDocument;
-        const prevServed = pk.noticeServed;
-        delete pk.noticeDocument;
-        pk.noticeServed = false;
-        delete STATE.noticeDocuments[pkId];
-        Router.render(); PKModal.render();
-        showToast("Notice document deleted.", "success");
-        API.post("deleteNoticeDocument", { phaseKhataId: pkId })
-          .then(function () { DATA.refreshQuietly(); })
+        const n = pk && pk.noticeDocuments && pk.noticeDocuments[noticeId];
+        if (!n) return;
+        const prevDate = n.noticeDate;
+        n.noticeDate = dmy;
+        API.post("updateNoticeDate", { phaseKhataId: pkId, noticeId: noticeId, noticeDate: dmy })
+          .then(function () { showToast("Notice date updated.", "success"); DATA.refreshQuietly(); })
           .catch(function (err) {
-            pk.noticeDocument = prevDoc;
-            pk.noticeServed = prevServed;
-            Router.render(); PKModal.render();
-            showToast(err.message || "Could not delete the notice document", "error");
+            n.noticeDate = prevDate;
+            PKModal.render();
+            showToast(err.message || "Could not update notice date", "error");
           });
       });
     });
 
-    const downloadNoticeBtn = $("#btnDownloadNoticeDoc");
-    if (downloadNoticeBtn) downloadNoticeBtn.addEventListener("click", function () {
-      const originalHtml = downloadNoticeBtn.innerHTML;
-      downloadNoticeBtn.disabled = true; downloadNoticeBtn.innerHTML = '<i class="icon-loader-circle i"></i><span>Preparing&hellip;</span>';
-      DATA.getNoticeDocument(PKModal.currentId).then(function (doc) {
-        const a = document.createElement("a");
-        a.href = doc.base64Data;
-        a.download = doc.fileName || "notice-document";
-        document.body.appendChild(a); a.click(); a.remove();
-      }).catch(function () {
-        showToast("Could not download the notice document.", "error");
-      }).finally(function () {
-        downloadNoticeBtn.disabled = false; downloadNoticeBtn.innerHTML = originalHtml;
+    // ---- View ----
+    $all("[data-notice-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const noticeId = btn.getAttribute("data-notice-view");
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Loading&hellip;</span>';
+        DATA.getNoticeDocument(PKModal.currentId, noticeId).then(function (doc) {
+          Lightbox.openData(doc.base64Data, doc.mimeType, "Notice document &middot; " + escapeHtml(doc.fileName || ""));
+        }).catch(function () {
+          showToast("Could not load the notice document.", "error");
+        }).finally(function () {
+          btn.disabled = false; btn.innerHTML = originalHtml;
+        });
       });
     });
+
+    // ---- Download (Admin) ----
+    $all("[data-notice-download]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const noticeId = btn.getAttribute("data-notice-download");
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '\u2026';
+        DATA.getNoticeDocument(PKModal.currentId, noticeId).then(function (doc) {
+          const a = document.createElement("a");
+          a.href = doc.base64Data;
+          a.download = doc.fileName || "notice-document";
+          document.body.appendChild(a); a.click(); a.remove();
+        }).catch(function () {
+          showToast("Could not download the notice document.", "error");
+        }).finally(function () {
+          btn.disabled = false; btn.innerHTML = originalHtml;
+        });
+      });
+    });
+
+    // ---- Delete (Verifier / Admin) ----
+    $all("[data-notice-delete]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const noticeId = btn.getAttribute("data-notice-delete");
+        confirmDialog(
+          "Delete this notice document?",
+          "This removes the uploaded notice file. If it is the last notice for this khata, \u201cNotice served\u201d will also be un-marked. This cannot be undone.",
+          "Delete"
+        ).then(function (ok) {
+          // keep the khata popup open behind/after the confirmation
+          if (PKModal.resolveCurrentId()) { PKModal.render(); $("#pkDetailModal").classList.add("open"); }
+          if (!ok) return;
+          const pkId = PKModal.currentId;
+          const pk = STATE.phaseKhatas[pkId];
+          if (!pk || !pk.noticeDocuments) return;
+          const prevDoc = pk.noticeDocuments[noticeId];
+          const prevServed = pk.noticeServed;
+          delete pk.noticeDocuments[noticeId];
+          if (!Object.keys(pk.noticeDocuments).length) pk.noticeServed = false;
+          delete STATE.noticeDocuments[noticeId];
+          Router.render(); PKModal.render();
+          showToast("Notice document deleted.", "success");
+          API.post("deleteNoticeDocument", { phaseKhataId: pkId, noticeId: noticeId })
+            .then(function () { DATA.refreshQuietly(); })
+            .catch(function (err) {
+              pk.noticeDocuments[noticeId] = prevDoc;
+              pk.noticeServed = prevServed;
+              Router.render(); PKModal.render();
+              showToast(err.message || "Could not delete the notice document", "error");
+            });
+        });
+      });
+    });
+
+    
 
     const noticeCb = $("#pkNotice");
     if (noticeCb && !noticeCb.disabled) noticeCb.addEventListener("change", function () {
