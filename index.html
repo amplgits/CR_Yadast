@@ -1252,8 +1252,8 @@ const DATA = {
     let stageIndex;
     if (compensationReceived) stageIndex = 4;
     else if (documentsVerified) stageIndex = 3;
-    else if (noticeServed && docsCollected) stageIndex = 2;
-    else if (noticeServed || docsCollected) stageIndex = 1;
+    else if (noticeServed) stageIndex = 2;
+    else if (docsCollected) stageIndex = 1;
     else stageIndex = 0;
 
     const stageLabels = ["Enlisted", "In Progress", "Ready for Verification", "Documents Verified", "Compensation Received"];
@@ -1516,13 +1516,8 @@ PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount) {
 };
 
 PAGES.isDocComplete = function (khataId) {
-  const docs = DATA.documentsForKhata(khataId);
-  const uploadedTypes = {};
-  docs.forEach(function (d) { uploadedTypes[d.documentType] = true; });
-  const k = STATE.khatas[khataId];
-  const extraRequired = (k && k.applicableOptionalDocs) || [];
-  const requiredTypes = MANDATORY_DOC_TYPES.concat(extraRequired);
-  return requiredTypes.every(function (t) { return uploadedTypes[t]; });
+  // Documents are optional now: "collected" simply means at least one document is uploaded
+  return DATA.documentsForKhata(khataId).length > 0;
 };
 
 PAGES.filterKhatasByDoc = function (khatas, filter) {
@@ -2173,7 +2168,7 @@ const PKModal = {
     const v = DATA.pkView(Object.assign({ id: PKModal.currentId }, pk));
     const esc = pk.escalation || null;
     const khataId = pk.khataId;
-    const readyForVerify = v.noticeServed && v.docsCollected;
+    const readyForVerify = v.noticeServed;
 
     const noticeList = noticeDocList(pk);
     const noticeDoc = noticeList.length ? noticeList[0] : null; // truthy = at least one notice exists (used by the "Notice served" checkbox below)
@@ -2199,8 +2194,11 @@ const PKModal = {
     if (CAN.fullControl()) {
       html +=
         '<div class="check-row"><input type="checkbox" id="pkVerified"' + (v.documentsVerified ? " checked" : "") + (!readyForVerify && !v.documentsVerified ? " disabled" : "") + '>' +
-        '<label for="pkVerified">Documents verified' + (!readyForVerify && !v.documentsVerified ? '<span class="hint">Needs notice served + documents collected first</span>' : '') + '</label></div>' +
-        (v.documentsVerified ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Verified on <b>' + fmtDMY(pk.documentsVerifiedAt) + '</b></div>' : '') +
+        '<label for="pkVerified">Documents verified' + (!readyForVerify && !v.documentsVerified ? '<span class="hint">Needs notice served first</span>' : (!v.docsCollected && !v.documentsVerified ? '<span class="hint">No documents uploaded - remarks will be required</span>' : '')) + '</label></div>' +
+        (!v.documentsVerified && !v.docsCollected && readyForVerify
+          ? '<div class="field" id="pkVerifyRemarksField" style="display:none;margin:-4px 0 14px 29px;"><label>Remarks (required to verify without documents)</label><textarea id="pkVerifyRemarks" rows="2" placeholder="Why is verification done without documents?"></textarea></div>'
+          : '') +
+        (v.documentsVerified ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Verified on <b>' + fmtDMY(pk.documentsVerifiedAt) + '</b>' + (pk.documentsVerifiedRemarks ? '<br>Remarks: ' + escapeHtml(pk.documentsVerifiedRemarks) : '') + '</div>' : '') +
         '<div class="check-row"><input type="checkbox" id="pkPaid"' + (v.compensationReceived ? " checked" : "") + (!v.documentsVerified && !v.compensationReceived ? " disabled" : "") + '>' +
         '<label for="pkPaid">Compensation received' + (!v.documentsVerified && !v.compensationReceived ? '<span class="hint">Needs documents verified first</span>' : '') + '</label></div>' +
         (v.compensationReceived ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Received on <b>' + fmtDMY(pk.compensationReceivedAt) + '</b></div>' : '');
@@ -2391,20 +2389,37 @@ const PKModal = {
         });
     });
 
-    const verifiedCb = $("#pkVerified");
+        const verifiedCb = $("#pkVerified");
     if (verifiedCb) verifiedCb.addEventListener("change", function () {
       const val = verifiedCb.checked;
       const pkId = PKModal.currentId;
       const pk = STATE.phaseKhatas[pkId];
-      const prevVerified = pk.documentsVerified, prevPaid = pk.compensationReceived;
+      const view = DATA.pkView(Object.assign({ id: pkId }, pk));
+
+      // No documents uploaded -> remarks are mandatory
+      let remarks = "";
+      if (val && !view.docsCollected) {
+        const field = $("#pkVerifyRemarksField"), box = $("#pkVerifyRemarks");
+        remarks = box ? box.value.trim() : "";
+        if (!remarks) {
+          verifiedCb.checked = false;
+          if (field) field.style.display = "";
+          if (box) box.focus();
+          showToast("No documents uploaded - enter remarks, then tick again.", "error");
+          return;
+        }
+      }
+
+      const prevVerified = pk.documentsVerified, prevPaid = pk.compensationReceived, prevRemarks = pk.documentsVerifiedRemarks;
       pk.documentsVerified = val;
+      pk.documentsVerifiedRemarks = (val && remarks) ? remarks : null;
       if (!val) pk.compensationReceived = false;
       Router.render(); PKModal.render();
       showToast(val ? "Documents marked verified." : "Verification removed.", "success");
-      API.post("setDocumentsVerified", { phaseKhataId: pkId, value: val })
+      API.post("setDocumentsVerified", { phaseKhataId: pkId, value: val, remarks: remarks })
         .then(function () { DATA.refreshQuietly(); })
         .catch(function (err) {
-          pk.documentsVerified = prevVerified; pk.compensationReceived = prevPaid;
+          pk.documentsVerified = prevVerified; pk.compensationReceived = prevPaid; pk.documentsVerifiedRemarks = prevRemarks;
           Router.render(); PKModal.render();
           showToast(err.message || "Could not update", "error");
         });
@@ -2705,18 +2720,12 @@ PAGES.compensationTabHtml = function (khataId) {
 PAGES.documentChecklistHtml = function (khataId, docs) {
   const uploadedByType = {};
   docs.forEach(function (d) { (uploadedByType[d.documentType] = uploadedByType[d.documentType] || []).push(d); });
-  const k = STATE.khatas[khataId];
-  const applicableOptionalDocs = (k && k.applicableOptionalDocs) || [];
-  const requiredTypes = MANDATORY_DOC_TYPES.concat(applicableOptionalDocs);
-  const mandatoryCompletedCount = requiredTypes.filter(function (t) { return uploadedByType[t] && uploadedByType[t].length; }).length;
-  const isComplete = PAGES.isDocComplete(khataId);
+  const uploadedCount = DOC_TYPES.filter(function (t) { return uploadedByType[t] && uploadedByType[t].length; }).length;
 
   const items = DOC_TYPES.map(function (t) {
     const typeDocs = uploadedByType[t] || [];
     const done = typeDocs.length > 0;
     const safeType = escapeHtml(t);
-    const isOptional = OPTIONAL_DOC_TYPES.indexOf(t) !== -1;
-    const markedApplicable = isOptional && applicableOptionalDocs.indexOf(t) !== -1;
     const thumbsHtml = done
       ? '<div class="doc-grid mt-8">' + typeDocs.map(function (d) {
           return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div></div>';
@@ -2724,20 +2733,12 @@ PAGES.documentChecklistHtml = function (khataId, docs) {
       : '';
     const statusBadge = done
       ? '<span class="badge badge-green"><i class="icon-check i"></i> Uploaded</span>'
-      : (isOptional && !markedApplicable
-          ? '<span class="badge badge-slate">Not applicable?</span>'
-          : '<span class="badge badge-amber"><i class="icon-circle-alert i"></i> Pending</span>');
-    const toggleBtn = (isOptional && CAN.fullControl() && !done)
-      ? (markedApplicable
-          ? '<button class="btn btn-ghost btn-sm" data-doctype-toggle="' + safeType + '" data-doctype-applicable="0">Mark not applicable</button>'
-          : '<button class="btn btn-ghost btn-sm" data-doctype-toggle="' + safeType + '" data-doctype-applicable="1">Mark applicable</button>')
-      : '';
+      : '<span class="badge badge-slate">Not uploaded</span>';
     return '<div class="sub-item-card" style="flex-direction:column;align-items:stretch;">' +
       '<div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">' +
-      '<div class="name">' + safeType + (isOptional ? ' <span style="font-size:8px;vertical-align:2px;color:var(--ink-soft);" title="Not mandatory - only if applicable to this khata">\u25B3</span>' : '') + '</div>' +
+      '<div class="name">' + safeType + '</div>' +
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
       statusBadge +
-      toggleBtn +
       '<label class="btn btn-ghost btn-sm"><i class="icon-image i"></i><span>Gallery</span><input type="file" accept="image/*" multiple data-doctype-input="gallery" data-doctype="' + safeType + '" style="display:none;"></label>' +
       '<label class="btn btn-ghost btn-sm"><i class="icon-camera i"></i><span>Camera</span><input type="file" accept="image/*" capture="environment" data-doctype-input="camera" data-doctype="' + safeType + '" style="display:none;"></label>' +
       '</div></div>' +
@@ -2745,10 +2746,9 @@ PAGES.documentChecklistHtml = function (khataId, docs) {
       '</div>';
   }).join("");
 
-  return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + mandatoryCompletedCount + "/" + requiredTypes.length + ' mandatory complete</span></div>' +
-    '<div style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">\u25B3 marks documents that are not mandatory by default - a Verifier or Admin can mark them applicable for a specific khata if needed.</div>' +
+  return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + uploadedCount + "/" + DOC_TYPES.length + ' uploaded &middot; all optional</span></div>' +
     items +
-    (isComplete ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
+    (docs.length ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
     "</div>";
 };
 
