@@ -940,6 +940,8 @@ const STATE = {
   compensation: {},
   documentImages: {},
   documentThumbnails: {},
+  khataDocuments: {},
+  khataExtras: {},
   noticeDocuments: {},
   phases: {},
   phaseKhatas: {},
@@ -960,6 +962,8 @@ const STATE = {
   executorReturnPhaseId: null,
   khataDocCategoryFilter: "all",
   docUploadCategories: { Land: false, Structure: false, Tree: false, Block: false },
+  globalDocsCursor: null,
+  globalDocsList: [],
 };
 
 /* Role capability helpers - single source of truth used everywhere
@@ -1347,10 +1351,6 @@ const DATA = {
     return DATA.khataList().filter(function (k) { return k.blockId === blockId; });
   },
 
-    khatasForBlock: function (blockId) {
-    return DATA.khataList().filter(function (k) { return k.blockId === blockId; });
-  },
-
   villageList: function () {
     const seen = {};
     DATA.khataList().forEach(function (k) { const v = (k.location || {}).village; if (v) seen[v] = true; });
@@ -1362,9 +1362,29 @@ const DATA = {
   },
 
   documentsForKhata: function (khataId) {
-    return Object.keys(STATE.documents)
-      .map(function (id) { return Object.assign({ id: id }, STATE.documents[id]); })
-      .filter(function (d) { return d.khataId === khataId; });
+    const cache = STATE.khataDocuments[khataId];
+    if (!cache) return [];
+    return Object.keys(cache).map(function (id) { return Object.assign({ id: id }, cache[id]); });
+  },
+
+  isKhataDocumentsLoaded: function (khataId) { return !!STATE.khataDocuments[khataId]; },
+
+  loadDocumentsForKhata: function (khataId, force) {
+    if (!force && STATE.khataDocuments[khataId]) return Promise.resolve(STATE.khataDocuments[khataId]);
+    return API.get("khataDocuments", { khataId: khataId, token: STATE.token }).then(function (data) {
+      STATE.khataDocuments[khataId] = data || {};
+      return STATE.khataDocuments[khataId];
+    });
+  },
+  
+    isKhataExtrasLoaded: function (khataId) { return !!STATE.khataExtras[khataId]; },
+
+  loadKhataExtras: function (khataId) {
+    if (STATE.khataExtras[khataId]) return Promise.resolve(STATE.khataExtras[khataId]);
+    return API.get("khataExtras", { khataId: khataId, token: STATE.token }).then(function (data) {
+      STATE.khataExtras[khataId] = data || { structures: {}, trees: {} };
+      return STATE.khataExtras[khataId];
+    });
   },
 
   blockKPIs: function () { return STATE.stats || {}; },
@@ -1631,23 +1651,30 @@ const PAGES = {};
    counting through "₹12,34,567" makes no sense. */
 PAGES.kpiCardHtml = function (c) {
   const isNumeric = typeof c.value === "number" && isFinite(c.value);
+  const formatAttr = c.format ? ' data-kpi-format="' + c.format + '"' : "";
   const valueHtml = isNumeric
-    ? '<div class="kpi-value" data-kpi-count data-target="' + c.value + '">0</div>'
+    ? '<div class="kpi-value" data-kpi-count' + formatAttr + ' data-target="' + c.value + '">0</div>'
     : '<div class="kpi-value">' + c.value + '</div>';
   return '<div class="kpi-card"><div class="accentbar" style="background:' + c.grad + '"></div><div class="kpi-icon" style="background:' + c.grad + '"><i class="' + c.icon + ' i"></i></div>' + valueHtml + '<div class="kpi-label">' + c.label + "</div></div>";
 };
 
 PAGES.animateKpiCounters = function () {
   $all("[data-kpi-count]").forEach(function (el) {
-    const target = parseInt(el.getAttribute("data-target"), 10) || 0;
+    const target = parseFloat(el.getAttribute("data-target")) || 0;
+    const format = el.getAttribute("data-kpi-format");
     const duration = 900;
     const start = performance.now();
+    function render(value) {
+      if (format === "inr") return fmtINR(value);
+      if (format === "acres") return fmtAcres(value);
+      return Math.round(value).toLocaleString("en-IN");
+    }
     function tick(now) {
       const p = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic - fast start, gentle finish
-      el.textContent = Math.round(eased * target).toLocaleString("en-IN");
+      el.innerHTML = render(eased * target);
       if (p < 1) requestAnimationFrame(tick);
-      else el.textContent = target.toLocaleString("en-IN");
+      else el.innerHTML = render(target);
     }
     requestAnimationFrame(tick);
   });
@@ -1671,8 +1698,8 @@ PAGES.dashboard = function () {
     { icon: "icon-image", label: "Documents", value: k.totalDocuments || 0, grad: "linear-gradient(135deg,#D97706,#F59E0B)" },
   ];
   if (CAN.canSeeCompensation()) {
-    kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" });
-    kpis.push({ icon: "icon-wallet", label: "Compensation disbursed", value: fmtINR(DATA.disbursedCompensationTotal()), grad: "linear-gradient(135deg,#059669,#10B981)" });
+    kpis.push({ icon: "icon-indian-rupee", label: "Total compensation", value: compTotal || 0, format: "inr", grad: "var(--money-grad)" });
+    kpis.push({ icon: "icon-wallet", label: "Compensation disbursed", value: DATA.disbursedCompensationTotal(), format: "inr", grad: "linear-gradient(135deg,#059669,#10B981)" });
     kpis.push({ icon: "icon-check-circle", label: "Compensation received (khatas)", value: DATA.allPhaseKhataViews().filter(function (v) { return v.compensationReceived; }).length, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" });
     kpis.push({ icon: "icon-triangle-alert", label: "Open escalations", value: DATA.allPhaseKhataViews().filter(function (v) { return v.hasEscalation; }).length, grad: "var(--rose-grad)" });
   }
@@ -1756,8 +1783,8 @@ PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount) {
 };
 
 PAGES.isDocComplete = function (khataId) {
-  // Documents are optional now: "collected" simply means at least one document is uploaded
-  return DATA.documentsForKhata(khataId).length > 0;
+  const k = STATE.khatas[khataId];
+  return !!(k && Number(k.docCount) > 0);
 };
 
 PAGES.filterKhatasByDoc = function (khatas, filter) {
@@ -2881,9 +2908,12 @@ PAGES.khataDetail = function (khataId) {
 
   const block = STATE.blocks[k.blockId] || {};
   const land = k.land || {}; const loc = k.location || {};
-  const structures = k.structures ? Object.keys(k.structures).map(function (id) { return Object.assign({ id: id }, k.structures[id]); }) : [];
-  const trees = k.trees ? Object.keys(k.trees).map(function (id) { return Object.assign({ id: id }, k.trees[id]); }) : [];
-  const docs = DATA.documentsForKhata(khataId);
+  const extras = STATE.khataExtras[khataId];
+  const structures = extras ? Object.keys(extras.structures || {}).map(function (id) { return Object.assign({ id: id }, extras.structures[id]); }) : [];
+  const trees = extras ? Object.keys(extras.trees || {}).map(function (id) { return Object.assign({ id: id }, extras.trees[id]); }) : [];
+  const structureCount = Number(k.structureCount) || 0;
+  const treeCount = Number(k.treeCount) || 0;
+  const docCount = Number(k.docCount) || 0;
   const status = (k.metadata || {}).status || "On record";
   const khataPhaseViews = DATA.khataPhaseEntries(khataId).map(DATA.pkView);
   const breadcrumbHtml = CAN.isExecutor()
@@ -2894,9 +2924,9 @@ PAGES.khataDetail = function (khataId) {
     breadcrumbHtml +
 
     '<div class="rt-hero"><div><h1>' + escapeHtml(k.rtName || "Unnamed RT") + '</h1><div class="sub">Khata ' + escapeHtml(k.khataNumber) + " &middot; " + escapeHtml(k.rtId || "&mdash;") + " &middot; " + escapeHtml(block.blockName || "") + "</div></div>" +
-    '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structures.length + '</b><span>Structures</span></div><div class="stat"><b>' + trees.length + '</b><span>Tree records</span></div></div></div>' +
+    '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structureCount + '</b><span>Structures</span></div><div class="stat"><b>' + treeCount + '</b><span>Tree records</span></div></div></div>' +
 
-    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docs.length + ')</button>' +
+    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docCount + ')</button>' +
     (CAN.canSeeCompensation() ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
@@ -2919,17 +2949,19 @@ PAGES.khataDetail = function (khataId) {
     PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
     "</div></div></div>" +
 
-    '<div class="tabpanel" data-panel="structures"><div class="card"><div class="section-title">Structures <span class="muted">' + structures.length + ' record(s)</span></div>' +
-    (structures.length ? structures.map(function (s) {
+    '<div class="tabpanel" data-panel="structures"><div class="card"><div class="section-title">Structures <span class="muted">' + structureCount + ' record(s)</span></div>' +
+    (!extras ? skeletonCards(2) : (structures.length ? structures.map(function (s) {
       return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(s.type || "Structure") + '</div><div class="details">' + escapeHtml(s.usage || "") + (s.area ? " &middot; " + escapeHtml(s.area) : "") + (s.remarks ? " &middot; " + escapeHtml(s.remarks) : "") + '</div></div><span class="badge badge-slate">' + escapeHtml(s.condition || "&mdash;") + "</span></div>";
-    }).join("") : emptyState("icon-home", "No structures recorded", "No structure entries exist for this Khata.")) + "</div></div>" +
+    }).join("") : emptyState("icon-home", "No structures recorded", "No structure entries exist for this Khata."))) + "</div></div>" +
 
-    '<div class="tabpanel" data-panel="trees"><div class="card"><div class="section-title">Trees <span class="muted">' + trees.length + ' record(s)</span></div>' +
-    (trees.length ? trees.map(function (t) {
+    '<div class="tabpanel" data-panel="trees"><div class="card"><div class="section-title">Trees <span class="muted">' + treeCount + ' record(s)</span></div>' +
+    (!extras ? skeletonCards(2) : (trees.length ? trees.map(function (t) {
       return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(t.species || "Tree") + '</div><div class="details">Qty ' + escapeHtml(t.quantity != null ? t.quantity : "&mdash;") + " &middot; " + escapeHtml(t.age || "") + (t.remarks ? " &middot; " + escapeHtml(t.remarks) : "") + '</div></div><span class="badge badge-slate">' + escapeHtml(t.condition || "&mdash;") + "</span></div>";
-    }).join("") : emptyState("icon-trees", "No trees recorded", "No tree entries exist for this Khata.")) + "</div></div>" +
+    }).join("") : emptyState("icon-trees", "No trees recorded", "No tree entries exist for this Khata."))) + "</div></div>" +
 
-    '<div class="tabpanel" data-panel="documents">' + PAGES.documentsTabHtml(khataId, docs) + "</div>" +
+    '<div class="tabpanel" data-panel="documents">' +
+    (DATA.isKhataDocumentsLoaded(khataId) ? PAGES.documentsTabHtml(khataId, DATA.documentsForKhata(khataId)) : skeletonCards(3)) +
+    "</div>" +
     (CAN.canSeeCompensation() ? '<div class="tabpanel" data-panel="compensation">' + PAGES.compensationTabHtml(khataId) + "</div>" : "")
   );
 };
@@ -3070,6 +3102,15 @@ PAGES.documentsTabHtml = function (khataId, docs) {
     PAGES.documentChecklistHtml(khataId, docs, STATE.khataDocCategoryFilter);
 };
 
+PAGES.ensureDocumentsLoaded = function (khataId) {
+  if (DATA.isKhataDocumentsLoaded(khataId)) { PAGES.wireDocumentsPanel(khataId); return; }
+  DATA.loadDocumentsForKhata(khataId).then(function () {
+    PAGES.refreshDocumentsPanel(khataId);
+  }).catch(function () {
+    showToast("Could not load documents for this khata.", "error");
+  });
+};
+
 /* ============================================================
    UPLOAD LOGIC
    ============================================================ */
@@ -3132,23 +3173,29 @@ const UPLOAD = {
     const categories = UPLOAD.selectedCategories();
     UPLOAD.compress(file).then(function (variants) {
       const tempId = "tempdoc_" + Math.random().toString(36).slice(2);
-      STATE.documents[tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
+      if (!STATE.khataDocuments[khataId]) STATE.khataDocuments[khataId] = {};
+      STATE.khataDocuments[khataId][tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
       STATE.documentThumbnails[tempId] = variants.thumb;
       STATE.documentImages[tempId] = variants.full;
       PAGES.refreshDocumentsPanel(khataId);
 
       return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb, categories: categories })
         .then(function (data) {
-          delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
-          STATE.documents[data.documentId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
+          if (STATE.khataDocuments[tempId]) delete STATE.khataDocuments[tempId];
+          if (STATE.khataDocuments[khataId]) delete STATE.khataDocuments[khataId][tempId];
+          delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
+          if (!STATE.khataDocuments[khataId]) STATE.khataDocuments[khataId] = {};
+          STATE.khataDocuments[khataId][data.documentId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
           STATE.documentThumbnails[data.documentId] = variants.thumb;
           STATE.documentImages[data.documentId] = variants.full;
+          const k = STATE.khatas[khataId];
+          if (k) k.docCount = (Number(k.docCount) || 0) + 1;
           showToast("Document uploaded.", "success");
           PAGES.refreshDocumentsPanel(khataId);
-          DATA.refreshQuietly();
         })
         .catch(function (err) {
-          delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
+          if (STATE.khataDocuments[khataId]) delete STATE.khataDocuments[khataId][tempId];
+          delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
           PAGES.refreshDocumentsPanel(khataId);
           throw err;
         });
@@ -3162,15 +3209,18 @@ const UPLOAD = {
       .then(function (ok) {
         if (!ok) return;
         DocDeleteFX.run(doc.id).then(function () {
-          const removed = STATE.documents[doc.id];
-          delete STATE.documents[doc.id];
-          Router.render();
+          const khataId = doc.khataId;
+          const removed = STATE.khataDocuments[khataId] && STATE.khataDocuments[khataId][doc.id];
+          if (STATE.khataDocuments[khataId]) delete STATE.khataDocuments[khataId][doc.id];
+          const k = STATE.khatas[khataId];
+          if (k) k.docCount = Math.max(0, (Number(k.docCount) || 0) - 1);
+          PAGES.refreshDocumentsPanel(khataId);
           showToast("Document deleted.", "success");
           API.post("deleteDocument", { documentId: doc.id })
-            .then(function () { DATA.refreshQuietly(); })
             .catch(function (err) {
-              if (removed) STATE.documents[doc.id] = removed;
-              Router.render();
+              if (removed) { STATE.khataDocuments[khataId] = STATE.khataDocuments[khataId] || {}; STATE.khataDocuments[khataId][doc.id] = removed; }
+              if (k) k.docCount = (Number(k.docCount) || 0) + 1;
+              PAGES.refreshDocumentsPanel(khataId);
               showToast(err.message || "Delete failed", "error");
             });
         });
@@ -3406,8 +3456,9 @@ PAGES.wireDocumentsPanel = function (khataId) {
 
   $all('[data-panel="documents"] .doc-thumb').forEach(function (el) {
     el.addEventListener("click", function () {
-      const doc = STATE.documents[el.getAttribute("data-doc-id")];
-      if (doc) Lightbox.open(Object.assign({ id: el.getAttribute("data-doc-id") }, doc));
+      const docId = el.getAttribute("data-doc-id");
+      const doc = STATE.khataDocuments[khataId] && STATE.khataDocuments[khataId][docId];
+      if (doc) Lightbox.open(Object.assign({ id: docId }, doc));
     });
   });
 
@@ -3437,7 +3488,7 @@ PAGES.wireDocumentsPanel = function (khataId) {
     API.post("replicateDocumentCategories", { khataId: khataId, fromCategories: from, toCategories: to })
       .then(function (data) {
         showToast(data.matched + " document(s) retagged.", "success");
-        return DATA.loadBootstrap().then(function () { PAGES.refreshDocumentsPanel(khataId); });
+        return DATA.loadDocumentsForKhata(khataId, true).then(function () { PAGES.refreshDocumentsPanel(khataId); });
       })
       .catch(function (err) { showToast(err.message || "Could not replicate", "error"); })
       .finally(function () { replicateBtn.disabled = false; replicateBtn.innerHTML = originalHtml; });
@@ -3466,7 +3517,7 @@ const DocTagsModal = {
   open: function (docId, khataId) {
     DocTagsModal.docId = docId;
     DocTagsModal.khataId = khataId;
-    const doc = STATE.documents[docId] || {};
+    const doc = (STATE.khataDocuments[khataId] && STATE.khataDocuments[khataId][docId]) || {};
     const current = docCategories(doc);
     const host = $("#docTagsCheckboxes");
     host.innerHTML = DOC_CATEGORIES.map(function (cat) {
@@ -3484,14 +3535,13 @@ const DocTagsModal = {
     const checked = $all("[data-doctags-cat]", $("#docTagsCheckboxes")).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.getAttribute("data-doctags-cat"); });
     if (!checked.length) { showToast("Select at least one category.", "error"); return; }
 
-    const doc = STATE.documents[docId];
+    const doc = STATE.khataDocuments[khataId] && STATE.khataDocuments[khataId][docId];
     const prevCategories = doc ? doc.categories : undefined;
     if (doc) doc.categories = checked;
     DocTagsModal.close();
     PAGES.refreshDocumentsPanel(khataId);
     showToast("Tags updated.", "success");
     API.post("setDocumentCategories", { documentId: docId, categories: checked })
-      .then(function () { DATA.refreshQuietly(); })
       .catch(function (err) {
         if (doc) doc.categories = prevCategories;
         PAGES.refreshDocumentsPanel(khataId);
@@ -3514,7 +3564,12 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
       $all(".tab-btn[data-tab]").forEach(function (b) { b.classList.remove("active"); });
       $all(".tabpanel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
-      $('[data-panel="' + btn.getAttribute("data-tab") + '"]').classList.add("active");
+      const tab = btn.getAttribute("data-tab");
+      $('[data-panel="' + tab + '"]').classList.add("active");
+      if (tab === "documents") PAGES.ensureDocumentsLoaded(khataId);
+      if ((tab === "structures" || tab === "trees") && !DATA.isKhataExtrasLoaded(khataId)) {
+        DATA.loadKhataExtras(khataId).then(function () { Router.render(); PAGES.afterKhataDetail(khataId, tab); });
+      }
     });
   });
 
@@ -3523,7 +3578,12 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
     if (targetBtn) targetBtn.click();
   }
 
-  PAGES.wireDocumentsPanel(khataId);
+  if (initialTab === "documents") PAGES.ensureDocumentsLoaded(khataId);
+  else if (DATA.isKhataDocumentsLoaded(khataId)) PAGES.wireDocumentsPanel(khataId);
+
+  if ((initialTab === "structures" || initialTab === "trees") && !DATA.isKhataExtrasLoaded(khataId)) {
+    DATA.loadKhataExtras(khataId).then(function () { Router.render(); PAGES.afterKhataDetail(khataId, initialTab); });
+  }
 
   $all("[data-doctype-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -3551,31 +3611,84 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
 };
 
 /* ============================================================
-   PAGES - GLOBAL DOCUMENTS BROWSER
+   PAGES - GLOBAL DOCUMENTS BROWSER (paginated - safe for lakhs
+   of documents; never loads more than one page at a time)
    ============================================================ */
 PAGES.documentsPage = function () {
-  const docs = Object.keys(STATE.documents).map(function (id) { return Object.assign({ id: id }, STATE.documents[id]); })
-    .sort(function (a, b) { return (b.uploadedAt || 0) - (a.uploadedAt || 0); });
+  STATE.globalDocsCursor = null;
+  STATE.globalDocsList = [];
+  const total = (STATE.stats && STATE.stats.totalDocuments) || 0;
+
+  // Zero documents system-wide: skip the API call entirely and show a
+  // plain empty state, with no "Load more" button to confuse things.
+  if (!total) {
+    return (
+      '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Documents</div>' +
+      '<div class="page-head"><div><h1>Documents</h1><p>No documents uploaded yet.</p></div></div>' +
+      '<div class="card">' + emptyState("icon-image-off", "No documents to show", "Upload documents from any Khata's profile page.") + "</div>"
+    );
+  }
+
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Documents</div>' +
-    '<div class="page-head"><div><h1>Documents</h1><p>' + docs.length + " file(s) uploaded across all Khatas.</p></div></div>" +
-    '<div class="card">' +
-    (docs.length ? '<div class="doc-grid">' + docs.map(function (d) {
-      const khataNumber = (STATE.khatas[d.khataId] || {}).khataNumber || "";
-      const label = (khataNumber ? khataNumber + "_" : "") + d.documentType + " \u00b7 " + docCategoryLabel(d);
-      return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(label) + "</span></div>";
-    }).join("") + "</div>" : emptyState("icon-image-off", "No documents yet", "Upload documents from any Khata's profile page.")) +
+    '<div class="page-head"><div><h1>Documents</h1><p>Most recently uploaded first &mdash; showing ' + total + ' total.</p></div></div>' +
+    '<div class="card"><div class="doc-grid" id="globalDocGrid"></div>' +
+    '<div class="mt-16" id="globalDocLoadMoreWrap"><button class="btn btn-ghost btn-sm" id="btnLoadMoreDocs"><i class="icon-plus i"></i>Load more</button></div>' +
     "</div>"
   );
 };
 
 PAGES.afterDocumentsPage = function () {
-  loadThumbnails("");
-  $all(".doc-thumb").forEach(function (el) {
-    el.addEventListener("click", function () {
-      const doc = STATE.documents[el.getAttribute("data-doc-id")];
-      if (doc) Lightbox.open(Object.assign({ id: el.getAttribute("data-doc-id") }, doc));
+  const btn = $("#btnLoadMoreDocs");
+  if (!btn) return; // zero-documents empty state has no button/grid to wire up
+  PAGES.loadGlobalDocsPage(true);
+  btn.addEventListener("click", function () { PAGES.loadGlobalDocsPage(false); });
+};
+
+PAGES.loadGlobalDocsPage = function (isFirst) {
+  const btn = $("#btnLoadMoreDocs");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Loading&hellip;</span>'; }
+  const params = { pageSize: 40, token: STATE.token };
+  if (STATE.globalDocsCursor) params.before = STATE.globalDocsCursor;
+  API.get("documentsPage", params).then(function (page) {
+    const entries = Object.keys(page || {}).map(function (id) { return Object.assign({ id: id }, page[id]); })
+      .sort(function (a, b) { return (b.uploadedAt || 0) - (a.uploadedAt || 0); });
+    if (!entries.length && isFirst) {
+      $("#globalDocGrid").outerHTML = emptyState("icon-image-off", "No documents yet", "Upload documents from any Khata's profile page.");
+      if (btn) btn.parentElement.remove();
+      return;
+    }
+    entries.forEach(function (d) { STATE.globalDocsList.push(d); STATE.khataDocuments[d.khataId] = STATE.khataDocuments[d.khataId] || {}; STATE.khataDocuments[d.khataId][d.id] = d; });
+    if (entries.length) STATE.globalDocsCursor = entries[entries.length - 1].uploadedAt;
+    const grid = $("#globalDocGrid");
+    grid.innerHTML = STATE.globalDocsList.map(function (d) {
+      const khataNumber = (STATE.khatas[d.khataId] || {}).khataNumber || "";
+      const label = (khataNumber ? khataNumber + "_" : "") + d.documentType + " \u00b7 " + docCategoryLabel(d);
+      return '<div class="doc-thumb" data-doc-id="' + d.id + '" data-khata-id="' + d.khataId + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(label) + "</span></div>";
+    }).join("");
+    loadThumbnails("#globalDocGrid");
+    $all("#globalDocGrid .doc-thumb").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const kid = el.getAttribute("data-khata-id"), did = el.getAttribute("data-doc-id");
+        const doc = STATE.khataDocuments[kid] && STATE.khataDocuments[kid][did];
+        if (doc) Lightbox.open(Object.assign({ id: did }, doc));
+      });
     });
+    if (entries.length < 40 && btn) btn.parentElement.remove();
+  }).catch(function () {
+    // On the very first page, a failure most likely just means there's
+    // nothing there yet (e.g. stats/totalDocuments was stale) - show a
+    // clean empty state instead of an alarming error toast.
+    if (isFirst && !STATE.globalDocsList.length) {
+      const grid = $("#globalDocGrid");
+      if (grid) grid.outerHTML = emptyState("icon-image-off", "No documents to show", "Upload documents from any Khata's profile page.");
+      const wrap = $("#globalDocLoadMoreWrap");
+      if (wrap) wrap.remove();
+    } else {
+      showToast("Could not load more documents.", "error");
+    }
+  }).finally(function () {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="icon-plus i"></i><span>Load more</span>'; }
   });
 };
 
@@ -3659,9 +3772,9 @@ PAGES.adminAnalytics = function () {
     { icon: "icon-file-text", label: "Khatas", value: k.totalKhatas || 0, grad: "linear-gradient(135deg,#7C3AED,#A855F7)" },
     { icon: "icon-list-plus", label: "Khatas added to phases", value: enlistedCount, grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
     { icon: "icon-list-x", label: "Khatas remaining", value: notEnlistedCount, grad: "linear-gradient(135deg,#94A3B8,#64748B)" },
-    { icon: "icon-ruler", label: "Total land", value: fmtAcres(k.totalLandAcres), grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
-    { icon: "icon-indian-rupee", label: "Total compensation", value: fmtINR(compTotal), grad: "var(--money-grad)" },
-    { icon: "icon-wallet", label: "Compensation disbursed", value: fmtINR(disbursedTotal), grad: "linear-gradient(135deg,#059669,#10B981)" },
+    { icon: "icon-ruler", label: "Total land", value: k.totalLandAcres || 0, format: "acres", grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
+    { icon: "icon-indian-rupee", label: "Total compensation", value: compTotal || 0, format: "inr", grad: "var(--money-grad)" },
+    { icon: "icon-wallet", label: "Compensation disbursed", value: disbursedTotal || 0, format: "inr", grad: "linear-gradient(135deg,#059669,#10B981)" },
     { icon: "icon-bell-ring", label: "Notice served", value: noticeServedCount, grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
     { icon: "icon-folder-check", label: "Documents collected", value: docsCollectedCount, grad: "linear-gradient(135deg,#7C3AED,#A855F7)" },
     { icon: "icon-badge-check", label: "Documents verified", value: documentsVerifiedCount, grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
