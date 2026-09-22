@@ -356,6 +356,10 @@ nav.bottomnav a.active{color:var(--brand-2);}
 }
 .doc-thumb .tag{position:absolute;bottom:5px;left:5px;background:rgba(15,23,42,0.7);color:#fff;font-size:9.5px;
   font-weight:700;padding:2px 6px;border-radius:5px;z-index:1;}
+.doc-thumb .tagbtn{position:absolute;bottom:4px;left:4px;right:4px;background:rgba(15,23,42,0.78);color:#fff;
+  font-size:9px;font-weight:800;letter-spacing:.03em;padding:3px 4px;border-radius:6px;z-index:2;border:none;
+  cursor:pointer;text-align:center;line-height:1.1;}
+.doc-thumb .tagbtn:active{background:rgba(15,23,42,0.95);}
 
 @media (max-width:480px){
   .doc-thumb{width:88px;height:88px;flex:0 0 88px;}
@@ -418,6 +422,57 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .toast .i{font-size:16px;flex-shrink:0;}
 @keyframes toastIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
 
+/* ---------------- Upload success celebration overlay ---------------- */
+#uploadSuccessOverlay{
+  position:fixed;inset:0;z-index:800;display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;background:rgba(15,23,42,0.35);backdrop-filter:blur(2px);
+  pointer-events:none;
+}
+#uploadSuccessOverlay.show{display:flex;animation:usfxBgIn .25s ease, usfxBgOut .35s ease 1.9s forwards;}
+@keyframes usfxBgIn{from{opacity:0;}to{opacity:1;}}
+@keyframes usfxBgOut{to{opacity:0;}}
+.usfx-burst{width:96px;height:96px;border-radius:50%;
+  background:var(--money-grad);display:flex;align-items:center;justify-content:center;
+  box-shadow:0 12px 40px rgba(16,185,129,0.45);
+  animation:usfxPop .5s cubic-bezier(.34,1.56,.64,1) both, usfxRing 1.6s ease-out .1s;
+}
+@keyframes usfxPop{0%{transform:scale(0.3);opacity:0;}60%{transform:scale(1.12);opacity:1;}100%{transform:scale(1);}}
+@keyframes usfxRing{
+  0%{box-shadow:0 12px 40px rgba(16,185,129,0.45),0 0 0 0 rgba(16,185,129,0.55);}
+  100%{box-shadow:0 12px 40px rgba(16,185,129,0.45),0 0 0 42px rgba(16,185,129,0);}
+}
+.usfx-check{width:52px;height:52px;}
+.usfx-circle{fill:none;stroke:rgba(255,255,255,0.35);stroke-width:3;}
+.usfx-tick{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:40;stroke-dashoffset:40;animation:usfxDraw .45s ease .25s forwards;}
+@keyframes usfxDraw{to{stroke-dashoffset:0;}}
+.usfx-label{color:#fff;font-weight:700;font-size:14.5px;background:rgba(15,23,42,0.55);
+  padding:8px 16px;border-radius:999px;opacity:0;animation:usfxLabelIn .3s ease .35s forwards;}
+@keyframes usfxLabelIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* ---------------- Document delete "thrown to bin" animation ---------------- */
+#docDeleteBin{
+  position:fixed;right:22px;bottom:88px;width:52px;height:52px;border-radius:50%;
+  background:var(--rose-grad);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:22px;box-shadow:var(--shadow-lg);z-index:750;
+  opacity:0;transform:scale(0.5);pointer-events:none;
+  transition:opacity .2s ease, transform .2s ease;
+}
+#docDeleteBin.show{opacity:1;transform:scale(1);}
+#docDeleteBin.bounce{animation:binBounce .26s ease;}
+@keyframes binBounce{0%{transform:scale(1);}40%{transform:scale(1.28);}100%{transform:scale(1);}}
+@media (min-width:900px){ #docDeleteBin{right:32px;bottom:32px;} }
+
+.doc-thumb-deleting{
+  animation:docThrowBin .72s cubic-bezier(.5,-0.2,.7,.4) forwards;
+  z-index:5;
+}
+@keyframes docThrowBin{
+  0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1;}
+  25%{transform:translate(6px,-14px) rotate(-12deg) scale(1.03);opacity:1;}
+  100%{transform:translate(160px,220px) rotate(420deg) scale(0.08);opacity:0;}
+}
+
 /* ---------------- Modal / dialog ---------------- */
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:450;display:none;
   align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);}
@@ -458,7 +513,9 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
 /* ---------------- Chart cards ---------------- */
 .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
-  padding:18px;box-shadow:var(--shadow-sm);}
+  padding:18px;box-shadow:var(--shadow-sm);transition:transform .12s ease-out, box-shadow .12s ease-out;
+  transform-style:preserve-3d;will-change:transform;}
+.chart-card:hover{box-shadow:0 20px 45px rgba(15,23,42,0.18), 0 6px 14px rgba(15,23,42,0.08);}
 .chart-card canvas{max-height:260px;}
 .chart-grid{display:grid;grid-template-columns:1fr;gap:16px;}
 @media (min-width:900px){ .chart-grid{grid-template-columns:1fr 1fr;} }
@@ -534,7 +591,6 @@ nav.bottomnav a.active{color:var(--brand-2);}
       <button type="button" class="toggle-pw" id="btnToggleGlPassword" tabindex="-1" aria-label="Show password">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
       </button>
-      <div class="error-msg">Enter your password.</div>
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnGateLogin">
       <i class="icon-log-in i"></i><span>Sign in</span>
@@ -654,6 +710,18 @@ nav.bottomnav a.active{color:var(--brand-2);}
 
 <div id="toastHost"></div>
 
+<div id="uploadSuccessOverlay">
+  <div class="usfx-burst">
+    <svg viewBox="0 0 64 64" class="usfx-check">
+      <circle cx="32" cy="32" r="30" class="usfx-circle"></circle>
+      <path d="M18 33 L27 42 L46 21" class="usfx-tick"></path>
+    </svg>
+  </div>
+  <div class="usfx-label" id="usfxLabel">Uploaded</div>
+</div>
+
+<div id="docDeleteBin" aria-hidden="true"><i class="icon-trash-2 i"></i></div>
+
 <div id="installBanner">
   <div class="brandmark" style="width:34px;height:34px;font-size:13px;">RT</div>
   <div style="flex:1;">
@@ -687,6 +755,22 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnSaveComp"><i class="icon-check i"></i><span>Save</span></button>
     <div class="btn-row" style="justify-content:center;margin-top:10px;">
       <button class="btn btn-ghost btn-sm" id="btnCancelComp">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DOCUMENT CATEGORY TAGGING MODAL ============ -->
+<div class="modal-backdrop" id="docTagsModal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-tag i"></i></div>
+    <h2>Tag this document</h2>
+    <p class="modal-sub">Pick every category this document should count for. It stays a single stored file — no duplicate is created, it just shows under each ticked category.</p>
+    <div class="field">
+      <div id="docTagsCheckboxes" class="flex gap-12" style="flex-wrap:wrap;"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnSaveDocTags"><i class="icon-check i"></i><span>Save</span></button>
+    <div class="btn-row" style="justify-content:center;margin-top:10px;">
+      <button class="btn btn-ghost btn-sm" id="btnCancelDocTags">Cancel</button>
     </div>
   </div>
 </div>
@@ -795,10 +879,34 @@ const MANDATORY_DOC_TYPES = DOC_TYPES.filter(function (t) { return OPTIONAL_DOC_
 
 const NOTICE_TYPES = ["Land", "Structure", "Tree", "Block"];
 
+/* Document CATEGORIES reuse the same four labels as notice types.
+   A document (from the general checklist - PAN card, voter card, etc.)
+   can be tagged for one or more of these; the underlying file/record
+   is stored exactly once in Firebase, and the tags just decide which
+   category tab(s) it "appears" under in the UI. */
+const DOC_CATEGORIES = NOTICE_TYPES;
+
 function noticeDocList(pk) {
   const map = (pk && pk.noticeDocuments) || {};
   return Object.keys(map).map(function (id) { return Object.assign({ id: id }, map[id]); })
     .sort(function (a, b) { return (a.uploadedAt || 0) - (b.uploadedAt || 0); });
+}
+
+/* A document's categories: which of Land/Structure/Tree/Block it counts
+   for. Legacy documents (uploaded before tagging existed, or uploaded
+   with every box ticked) have no categories field, or all four - treat
+   a missing/empty list as "every category" so nothing already uploaded
+   silently disappears from any tab. */
+function docCategories(d) {
+  const c = d && d.categories;
+  if (Array.isArray(c) && c.length) return c;
+  return DOC_CATEGORIES.slice();
+}
+function docHasCategory(d, cat) { return docCategories(d).indexOf(cat) !== -1; }
+function docCategoryLabel(d) {
+  const cats = docCategories(d);
+  if (cats.length >= DOC_CATEGORIES.length) return "All";
+  return cats.map(function (c) { return c[0]; }).join("");
 }
 
 /* ============================================================
@@ -850,6 +958,8 @@ const STATE = {
   khataSearchQuery: "",
   khataSortBy: "khataNumberAsc",
   executorReturnPhaseId: null,
+  khataDocCategoryFilter: "all",
+  docUploadCategories: { Land: false, Structure: false, Tree: false, Block: false },
 };
 
 /* Role capability helpers - single source of truth used everywhere
@@ -997,6 +1107,55 @@ function skeletonCards(count) {
 function emptyState(icon, title, message, actionHtml) {
   return '<div class="empty-state"><i class="' + icon + ' i"></i><h3>' + escapeHtml(title) + "</h3><p>" + escapeHtml(message) + "</p>" + (actionHtml || "") + "</div>";
 }
+
+/* ============================================================
+   UPLOAD SUCCESS CELEBRATION — a short (about 2.3s) full-screen
+   checkmark burst shown right after a document or notice upload
+   completes, so the user gets unmistakable visual confirmation.
+   ============================================================ */
+const UploadSuccessFX = {
+  timer: null,
+  show: function (message) {
+    const el = $("#uploadSuccessOverlay");
+    if (!el) return;
+    clearTimeout(UploadSuccessFX.timer);
+    el.classList.remove("show");
+    void el.offsetWidth; // restart CSS animations if triggered again quickly
+    const label = $("#usfxLabel");
+    if (label) label.textContent = message || "Uploaded";
+    el.classList.add("show");
+    UploadSuccessFX.timer = setTimeout(function () { el.classList.remove("show"); }, 2300);
+  },
+};
+
+/* ============================================================
+   DOCUMENT DELETE "THROWN TO BIN" ANIMATION — plays on every
+   on-screen thumbnail of the document being deleted. The caller
+   awaits this before actually removing the record and re-rendering,
+   so the thumbnail never lingers after the user confirms delete.
+   ============================================================ */
+const DocDeleteFX = {
+  DURATION_MS: 720,
+  run: function (docId) {
+    const thumbs = $all('.doc-thumb[data-doc-id="' + docId + '"]');
+    if (!thumbs.length) return Promise.resolve();
+    const bin = $("#docDeleteBin");
+    if (bin) bin.classList.add("show");
+    thumbs.forEach(function (el) {
+      el.style.pointerEvents = "none";
+      el.classList.add("doc-thumb-deleting");
+    });
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        if (bin) {
+          bin.classList.add("bounce");
+          setTimeout(function () { bin.classList.remove("show", "bounce"); }, 260);
+        }
+        resolve();
+      }, DocDeleteFX.DURATION_MS);
+    });
+  },
+};
 
 /* ============================================================
    API
@@ -1466,6 +1625,34 @@ const Router = {
    ============================================================ */
 const PAGES = {};
 
+/* A KPI card whose value is a plain number renders starting at 0 and
+   counts up to it (see animateKpiCounters); a value that's already a
+   formatted string (currency, acreage, etc.) renders as-is, since
+   counting through "₹12,34,567" makes no sense. */
+PAGES.kpiCardHtml = function (c) {
+  const isNumeric = typeof c.value === "number" && isFinite(c.value);
+  const valueHtml = isNumeric
+    ? '<div class="kpi-value" data-kpi-count data-target="' + c.value + '">0</div>'
+    : '<div class="kpi-value">' + c.value + '</div>';
+  return '<div class="kpi-card"><div class="accentbar" style="background:' + c.grad + '"></div><div class="kpi-icon" style="background:' + c.grad + '"><i class="' + c.icon + ' i"></i></div>' + valueHtml + '<div class="kpi-label">' + c.label + "</div></div>";
+};
+
+PAGES.animateKpiCounters = function () {
+  $all("[data-kpi-count]").forEach(function (el) {
+    const target = parseInt(el.getAttribute("data-target"), 10) || 0;
+    const duration = 900;
+    const start = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic - fast start, gentle finish
+      el.textContent = Math.round(eased * target).toLocaleString("en-IN");
+      if (p < 1) requestAnimationFrame(tick);
+      else el.textContent = target.toLocaleString("en-IN");
+    }
+    requestAnimationFrame(tick);
+  });
+};
+
 PAGES.dashboard = function () {
   if (!STATE.loaded) return skeletonCards(4);
   const k = DATA.blockKPIs();
@@ -1493,9 +1680,7 @@ PAGES.dashboard = function () {
   const blockIds = Object.keys(STATE.blocks);
   return (
     '<div class="page-head"><div><h1>RT Compensation Management</h1><p>Manage, review and analyse RT records, khatas, land, structures, trees and documentation.</p></div></div>' +
-    '<div class="kpi-grid">' + kpis.map(function (c) {
-      return '<div class="kpi-card"><div class="accentbar" style="background:' + c.grad + '"></div><div class="kpi-icon" style="background:' + c.grad + '"><i class="' + c.icon + ' i"></i></div><div class="kpi-value">' + c.value + '</div><div class="kpi-label">' + c.label + "</div></div>";
-    }).join("") + "</div>" +
+    '<div class="kpi-grid">' + kpis.map(PAGES.kpiCardHtml).join("") + "</div>" +
     '<div class="mt-16"></div><div class="card"><div class="section-title">Browse by block <span class="muted">' + blockIds.length + ' total</span></div>' +
     PAGES.blockCardsHtml(blockIds.slice(0, 6)) +
     (blockIds.length > 6 ? '<div class="mt-16"><a href="#/blocks" class="btn btn-ghost btn-sm">View all blocks <i class="icon-arrow-right i"></i></a></div>' : "") +
@@ -1721,6 +1906,7 @@ PAGES.khatasList = function () {
 };
 
 PAGES.afterEntityGrid = function () {
+  PAGES.animateKpiCounters();
   $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
   $all("[data-status-filter]").forEach(function (el) {
     el.addEventListener("click", function () {
@@ -2164,6 +2350,7 @@ const PKModal = {
     const isPdf = file.type === "application/pdf";
     const isImage = /^image\//.test(file.type);
     if (!isPdf && !isImage) { showToast(file.name + " isn't an image or PDF - skipped.", "error"); return Promise.resolve(); }
+    UploadSuccessFX.show("Uploading " + noticeType.toLowerCase() + " notice"); // fire immediately - don't wait for the server round-trip
 
     const readFile = isImage
       ? UPLOAD.compress(file).then(function (variants) { return variants.full; })
@@ -2772,43 +2959,115 @@ PAGES.compensationTabHtml = function (khataId) {
 /* ============================================================
    PAGES - DOCUMENTS TAB
    ============================================================ */
-PAGES.documentChecklistHtml = function (khataId, docs) {
+PAGES.docCategoryTabsHtml = function (docs, active) {
+  active = active || "all";
+  const counts = {};
+  DOC_CATEGORIES.forEach(function (cat) { counts[cat] = docs.filter(function (d) { return docHasCategory(d, cat); }).length; });
+  let html = '<div class="tabs">';
+  html += '<button class="tab-btn' + (active === "all" ? " active" : "") + '" data-doc-cat-filter="all">All categories <span class="muted">' + docs.length + '</span></button>';
+  DOC_CATEGORIES.forEach(function (cat) {
+    html += '<button class="tab-btn' + (active === cat ? " active" : "") + '" data-doc-cat-filter="' + cat + '">' + cat + ' <span class="muted">' + counts[cat] + '</span></button>';
+  });
+  return html + '</div>';
+};
+
+PAGES.uploadTagRowHtml = function (activeCategory) {
+  activeCategory = activeCategory || "all";
+  const sel = STATE.docUploadCategories;
+  const catsToShow = activeCategory === "all" ? DOC_CATEGORIES : [activeCategory];
+  const chks = catsToShow.map(function (cat) {
+    const checked = sel[cat] ? " checked" : "";
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">' +
+      '<input type="checkbox" data-upload-cat="' + cat + '"' + checked + ' style="width:17px;height:17px;">' + cat + '</label>';
+  }).join("");
+  const helpText = activeCategory === "all"
+    ? "Tick at least one category before uploading &mdash; a document is stored once but shows under every ticked category. Uploading stays disabled until you tick one. Retag an existing document by tapping the label on its thumbnail, or use Replicate below to retag many at once."
+    : 'Tick "' + escapeHtml(activeCategory) + '" to enable uploading here &mdash; a new upload on this tab is tagged for ' + escapeHtml(activeCategory) + ' only. Switch to "All categories" to tag a new upload for several categories at once, or use Replicate below to add more categories to documents you\u2019ve already uploaded.';
+  return '<div class="card mb-16"><div class="section-title">Tag new uploads as</div>' +
+    '<div class="flex gap-12" style="flex-wrap:wrap;">' + chks + '</div>' +
+    '<span class="text-sm text-mute" style="display:block;margin-top:8px;">' + helpText + '</span>' +
+    '</div>';
+};
+
+PAGES.replicateRowHtml = function (docs) {
+  docs = docs || [];
+  if (!docs.length) return ""; // nothing uploaded for this khata yet - nothing to replicate
+
+  const withDocs = DOC_CATEGORIES.filter(function (cat) {
+    return docs.some(function (d) { return docHasCategory(d, cat); });
+  });
+  const pending = DOC_CATEGORIES.filter(function (cat) { return withDocs.indexOf(cat) === -1; });
+
+  if (!withDocs.length) return ""; // defensive - nothing is actually tagged yet
+
+  const fromChks = withDocs.map(function (cat) {
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">' +
+      '<input type="checkbox" data-replicate-from="' + cat + '" checked style="width:17px;height:17px;">' + cat + '</label>';
+  }).join("");
+
+  const toChks = pending.length
+    ? pending.map(function (cat) {
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">' +
+          '<input type="checkbox" data-replicate-to="' + cat + '" style="width:17px;height:17px;">' + cat + '</label>';
+      }).join("")
+    : '<span class="text-sm text-mute">Every category already has documents &mdash; nothing pending.</span>';
+
+  return '<div class="card mb-16"><div class="section-title">Replicate documents between categories</div>' +
+    '<div class="text-sm text-mute mb-16">Categories that already have documents are ticked as the source below. Tick which still-pending category(ies) should receive them, then Replicate &mdash; every matching document is retagged at once. Nothing is uploaded twice.</div>' +
+    '<div class="field"><label>From <span class="text-mute" style="font-weight:600;">(already has documents)</span></label><div class="flex gap-12" style="flex-wrap:wrap;">' + fromChks + '</div></div>' +
+    '<div class="field"><label>To <span class="text-mute" style="font-weight:600;">(still pending)</span></label><div class="flex gap-12" style="flex-wrap:wrap;">' + toChks + '</div></div>' +
+    (pending.length ? '<button class="btn btn-primary btn-sm" id="btnReplicateCategories"><i class="icon-copy i"></i>Replicate</button>' : '') +
+    '</div>';
+};
+
+PAGES.documentChecklistHtml = function (khataId, docs, categoryFilter) {
+  categoryFilter = categoryFilter || "all";
+  const matches = function (d) { return categoryFilter === "all" || docHasCategory(d, categoryFilter); };
+  const uploadsBlocked = !UPLOAD.selectedCategories().length;
+
   const uploadedByType = {};
   docs.forEach(function (d) { (uploadedByType[d.documentType] = uploadedByType[d.documentType] || []).push(d); });
-  const uploadedCount = DOC_TYPES.filter(function (t) { return uploadedByType[t] && uploadedByType[t].length; }).length;
+  const uploadedCount = DOC_TYPES.filter(function (t) { return (uploadedByType[t] || []).some(matches); }).length;
 
   const items = DOC_TYPES.map(function (t) {
-    const typeDocs = uploadedByType[t] || [];
+    const typeDocs = (uploadedByType[t] || []).filter(matches);
     const done = typeDocs.length > 0;
     const safeType = escapeHtml(t);
     const thumbsHtml = done
       ? '<div class="doc-grid mt-8">' + typeDocs.map(function (d) {
-          return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div></div>';
+          return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div>' +
+            '<button class="tagbtn" data-doc-tag-btn="' + d.id + '" title="Edit which categories this counts for">' + escapeHtml(docCategoryLabel(d)) + '</button></div>';
         }).join("") + '</div>'
       : '';
     const statusBadge = done
       ? '<span class="badge badge-green"><i class="icon-check i"></i> Uploaded</span>'
       : '<span class="badge badge-slate">Not uploaded</span>';
+    const uploadLabelStyle = uploadsBlocked ? ' style="opacity:.5;pointer-events:none;" title="Tick a category above first"' : "";
+    const uploadDisabledAttr = uploadsBlocked ? " disabled" : "";
     return '<div class="sub-item-card" style="flex-direction:column;align-items:stretch;">' +
       '<div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">' +
       '<div class="name">' + safeType + '</div>' +
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
       statusBadge +
-      '<label class="btn btn-ghost btn-sm"><i class="icon-image i"></i><span>Gallery</span><input type="file" accept="image/*" multiple data-doctype-input="gallery" data-doctype="' + safeType + '" style="display:none;"></label>' +
-      '<label class="btn btn-ghost btn-sm"><i class="icon-camera i"></i><span>Camera</span><input type="file" accept="image/*" capture="environment" data-doctype-input="camera" data-doctype="' + safeType + '" style="display:none;"></label>' +
+      '<label class="btn btn-ghost btn-sm"' + uploadLabelStyle + '><i class="icon-image i"></i><span>Gallery</span><input type="file" accept="image/*" multiple data-doctype-input="gallery" data-doctype="' + safeType + '" style="display:none;"' + uploadDisabledAttr + '></label>' +
+      '<label class="btn btn-ghost btn-sm"' + uploadLabelStyle + '><i class="icon-camera i"></i><span>Camera</span><input type="file" accept="image/*" capture="environment" data-doctype-input="camera" data-doctype="' + safeType + '" style="display:none;"' + uploadDisabledAttr + '></label>' +
       '</div></div>' +
       thumbsHtml +
       '</div>';
   }).join("");
 
   return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + uploadedCount + "/" + DOC_TYPES.length + ' uploaded &middot; all optional</span></div>' +
+    (uploadsBlocked ? '<div class="badge badge-amber mb-16"><i class="icon-triangle-alert i"></i> Tick at least one category above to enable uploading</div>' : '') +
     items +
     (docs.length ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
     "</div>";
 };
 
 PAGES.documentsTabHtml = function (khataId, docs) {
-  return PAGES.documentChecklistHtml(khataId, docs);
+  return PAGES.docCategoryTabsHtml(docs, STATE.khataDocCategoryFilter) +
+    PAGES.uploadTagRowHtml(STATE.khataDocCategoryFilter) +
+    PAGES.replicateRowHtml(docs) +
+    PAGES.documentChecklistHtml(khataId, docs, STATE.khataDocCategoryFilter);
 };
 
 /* ============================================================
@@ -2818,6 +3077,16 @@ const UPLOAD = {
   CONFIG: {
     fullMaxEdge: 900, fullQuality: 0.55,
     thumbMaxEdge: 220, thumbQuality: 0.45,
+  },
+
+  selectedCategories: function () {
+    const active = STATE.khataDocCategoryFilter || "all";
+    if (active !== "all") {
+      // Narrowed to one category tab (e.g. "Land") - only that category's
+      // checkbox is shown, so it's the only one that can apply here.
+      return STATE.docUploadCategories[active] ? [active] : [];
+    }
+    return DOC_CATEGORIES.filter(function (c) { return STATE.docUploadCategories[c]; });
   },
 
   compress: function (file) {
@@ -2848,6 +3117,10 @@ const UPLOAD = {
   },
 
   handleFiles: function (khataId, files, docType) {
+    if (!UPLOAD.selectedCategories().length) {
+      showToast("Tick at least one category above before uploading.", "error");
+      return;
+    }
     Array.from(files).forEach(function (file) {
       if (!/^image\//.test(file.type)) { showToast(file.name + " isn't an image - skipped.", "error"); return; }
       UPLOAD.uploadOne(khataId, file, docType);
@@ -2855,26 +3128,28 @@ const UPLOAD = {
   },
 
   uploadOne: function (khataId, file, docType) {
+    UploadSuccessFX.show("Uploading document"); // fire immediately - don't wait for the server round-trip
+    const categories = UPLOAD.selectedCategories();
     UPLOAD.compress(file).then(function (variants) {
       const tempId = "tempdoc_" + Math.random().toString(36).slice(2);
-      STATE.documents[tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "" };
+      STATE.documents[tempId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
       STATE.documentThumbnails[tempId] = variants.thumb;
       STATE.documentImages[tempId] = variants.full;
-      Router.render();
+      PAGES.refreshDocumentsPanel(khataId);
 
-      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb })
+      return API.post("addDocument", { khataId: khataId, documentType: docType, fileName: file.name, base64Data: variants.full, thumbData: variants.thumb, categories: categories })
         .then(function (data) {
           delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
-          STATE.documents[data.documentId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "" };
+          STATE.documents[data.documentId] = { fileName: file.name, documentType: docType, uploadedAt: Date.now(), khataId: khataId, blockId: "", categories: categories.slice() };
           STATE.documentThumbnails[data.documentId] = variants.thumb;
           STATE.documentImages[data.documentId] = variants.full;
           showToast("Document uploaded.", "success");
-          Router.render();
+          PAGES.refreshDocumentsPanel(khataId);
           DATA.refreshQuietly();
         })
         .catch(function (err) {
           delete STATE.documents[tempId]; delete STATE.documentThumbnails[tempId]; delete STATE.documentImages[tempId];
-          Router.render();
+          PAGES.refreshDocumentsPanel(khataId);
           throw err;
         });
     }).catch(function (err) {
@@ -2886,17 +3161,19 @@ const UPLOAD = {
     confirmDialog("Delete this document?", "This will permanently remove \u201c" + doc.fileName + "\u201d. This action cannot be easily undone.", "Delete")
       .then(function (ok) {
         if (!ok) return;
-        const removed = STATE.documents[doc.id];
-        delete STATE.documents[doc.id];
-        Router.render();
-        showToast("Document deleted.", "success");
-        API.post("deleteDocument", { documentId: doc.id })
-          .then(function () { DATA.refreshQuietly(); })
-          .catch(function (err) {
-            if (removed) STATE.documents[doc.id] = removed;
-            Router.render();
-            showToast(err.message || "Delete failed", "error");
-          });
+        DocDeleteFX.run(doc.id).then(function () {
+          const removed = STATE.documents[doc.id];
+          delete STATE.documents[doc.id];
+          Router.render();
+          showToast("Document deleted.", "success");
+          API.post("deleteDocument", { documentId: doc.id })
+            .then(function () { DATA.refreshQuietly(); })
+            .catch(function (err) {
+              if (removed) STATE.documents[doc.id] = removed;
+              Router.render();
+              showToast(err.message || "Delete failed", "error");
+            });
+        });
       });
   },
 };
@@ -3102,12 +3379,139 @@ function loadThumbnails(scopeSelector) {
   });
 }
 
+/* ------------------------------------------------------------
+   Documents panel (inside a Khata's "Documents" tab): category
+   tabs (All / Land / Structure / Tree / Block), the "tag new
+   uploads as" checkboxes, the checklist itself, and per-document
+   tag editing. Split out so a category tab click or a tag edit
+   can refresh just this panel instead of the whole Khata page
+   (which would otherwise snap back to the Overview tab).
+   ------------------------------------------------------------ */
+PAGES.wireDocumentsPanel = function (khataId) {
+  $all("[data-doc-cat-filter]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      STATE.khataDocCategoryFilter = el.getAttribute("data-doc-cat-filter");
+      PAGES.refreshDocumentsPanel(khataId);
+    });
+  });
+
+  $all("[data-upload-cat]").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      STATE.docUploadCategories[cb.getAttribute("data-upload-cat")] = cb.checked;
+      PAGES.refreshDocumentsPanel(khataId);
+    });
+  });
+
+  loadThumbnails('[data-panel="documents"]');
+
+  $all('[data-panel="documents"] .doc-thumb').forEach(function (el) {
+    el.addEventListener("click", function () {
+      const doc = STATE.documents[el.getAttribute("data-doc-id")];
+      if (doc) Lightbox.open(Object.assign({ id: el.getAttribute("data-doc-id") }, doc));
+    });
+  });
+
+  $all('[data-panel="documents"] [data-doc-tag-btn]').forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      DocTagsModal.open(btn.getAttribute("data-doc-tag-btn"), khataId);
+    });
+  });
+
+  $all('[data-panel="documents"] [data-doctype-input]').forEach(function (input) {
+    input.addEventListener("change", function (e) {
+      const docType = input.getAttribute("data-doctype");
+      UPLOAD.handleFiles(khataId, e.target.files, docType);
+      e.target.value = "";
+    });
+  });
+
+    const replicateBtn = $("#btnReplicateCategories");
+  if (replicateBtn) replicateBtn.addEventListener("click", function () {
+    const from = $all('[data-panel="documents"] [data-replicate-from]').filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.getAttribute("data-replicate-from"); });
+    const to = $all('[data-panel="documents"] [data-replicate-to]').filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.getAttribute("data-replicate-to"); });
+    if (!from.length) { showToast("Select at least one source category (From).", "error"); return; }
+    if (!to.length) { showToast("Select at least one destination category (To).", "error"); return; }
+    const originalHtml = replicateBtn.innerHTML;
+    replicateBtn.disabled = true; replicateBtn.innerHTML = '<i class="icon-loader-circle i"></i><span>Replicating&hellip;</span>';
+    API.post("replicateDocumentCategories", { khataId: khataId, fromCategories: from, toCategories: to })
+      .then(function (data) {
+        showToast(data.matched + " document(s) retagged.", "success");
+        return DATA.loadBootstrap().then(function () { PAGES.refreshDocumentsPanel(khataId); });
+      })
+      .catch(function (err) { showToast(err.message || "Could not replicate", "error"); })
+      .finally(function () { replicateBtn.disabled = false; replicateBtn.innerHTML = originalHtml; });
+  });
+
+  const downloadAllBtn = $("#btnDownloadAllDocs");
+  if (downloadAllBtn) downloadAllBtn.addEventListener("click", function () { ZIPDOWNLOAD.downloadAll(khataId, downloadAllBtn); });
+};
+
+PAGES.refreshDocumentsPanel = function (khataId) {
+  const panel = document.querySelector('[data-panel="documents"]');
+  if (!panel) return;
+  panel.innerHTML = PAGES.documentsTabHtml(khataId, DATA.documentsForKhata(khataId));
+  PAGES.wireDocumentsPanel(khataId);
+};
+
+/* ============================================================
+   DOCUMENT TAG EDIT MODAL — retag an already-uploaded document
+   for one or more of Land/Structure/Tree/Block without touching
+   the underlying stored file.
+   ============================================================ */
+const DocTagsModal = {
+  docId: null,
+  khataId: null,
+
+  open: function (docId, khataId) {
+    DocTagsModal.docId = docId;
+    DocTagsModal.khataId = khataId;
+    const doc = STATE.documents[docId] || {};
+    const current = docCategories(doc);
+    const host = $("#docTagsCheckboxes");
+    host.innerHTML = DOC_CATEGORIES.map(function (cat) {
+      const checked = current.indexOf(cat) !== -1 ? " checked" : "";
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;cursor:pointer;">' +
+        '<input type="checkbox" data-doctags-cat="' + cat + '"' + checked + ' style="width:17px;height:17px;">' + cat + '</label>';
+    }).join("");
+    $("#docTagsModal").classList.add("open");
+  },
+  close: function () { $("#docTagsModal").classList.remove("open"); },
+
+  save: function () {
+    const docId = DocTagsModal.docId;
+    const khataId = DocTagsModal.khataId;
+    const checked = $all("[data-doctags-cat]", $("#docTagsCheckboxes")).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.getAttribute("data-doctags-cat"); });
+    if (!checked.length) { showToast("Select at least one category.", "error"); return; }
+
+    const doc = STATE.documents[docId];
+    const prevCategories = doc ? doc.categories : undefined;
+    if (doc) doc.categories = checked;
+    DocTagsModal.close();
+    PAGES.refreshDocumentsPanel(khataId);
+    showToast("Tags updated.", "success");
+    API.post("setDocumentCategories", { documentId: docId, categories: checked })
+      .then(function () { DATA.refreshQuietly(); })
+      .catch(function (err) {
+        if (doc) doc.categories = prevCategories;
+        PAGES.refreshDocumentsPanel(khataId);
+        showToast(err.message || "Could not update tags", "error");
+      });
+  },
+};
+
+function wireDocTagsModal() {
+  $("#btnCancelDocTags").addEventListener("click", DocTagsModal.close);
+  $("#btnSaveDocTags").addEventListener("click", DocTagsModal.save);
+}
+
 PAGES.afterKhataDetail = function (khataId, initialTab) {
   $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
 
   $all(".tab-btn").forEach(function (btn) {
+    if (!btn.hasAttribute("data-tab")) return; // skip nested sub-tabs, e.g. the document category tabs
     btn.addEventListener("click", function () {
-      $all(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      $all(".tab-btn[data-tab]").forEach(function (b) { b.classList.remove("active"); });
       $all(".tabpanel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
       $('[data-panel="' + btn.getAttribute("data-tab") + '"]').classList.add("active");
@@ -3119,22 +3523,7 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
     if (targetBtn) targetBtn.click();
   }
 
-  loadThumbnails("");
-
-  $all(".doc-thumb").forEach(function (el) {
-    el.addEventListener("click", function () {
-      const doc = STATE.documents[el.getAttribute("data-doc-id")];
-      if (doc) Lightbox.open(Object.assign({ id: el.getAttribute("data-doc-id") }, doc));
-    });
-  });
-
-  $all("[data-doctype-input]").forEach(function (input) {
-    input.addEventListener("change", function (e) {
-      const docType = input.getAttribute("data-doctype");
-      UPLOAD.handleFiles(khataId, e.target.files, docType);
-      e.target.value = "";
-    });
-  });
+  PAGES.wireDocumentsPanel(khataId);
 
   $all("[data-doctype-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -3159,9 +3548,6 @@ PAGES.afterKhataDetail = function (khataId, initialTab) {
 
   const editBtn = $("#btnEditComp");
   if (editBtn) editBtn.addEventListener("click", function () { CompModal.open(khataId); });
-
-  const downloadAllBtn = $("#btnDownloadAllDocs");
-  if (downloadAllBtn) downloadAllBtn.addEventListener("click", function () { ZIPDOWNLOAD.downloadAll(khataId, downloadAllBtn); });
 };
 
 /* ============================================================
@@ -3176,7 +3562,7 @@ PAGES.documentsPage = function () {
     '<div class="card">' +
     (docs.length ? '<div class="doc-grid">' + docs.map(function (d) {
       const khataNumber = (STATE.khatas[d.khataId] || {}).khataNumber || "";
-      const label = (khataNumber ? khataNumber + "_" : "") + d.documentType;
+      const label = (khataNumber ? khataNumber + "_" : "") + d.documentType + " \u00b7 " + docCategoryLabel(d);
       return '<div class="doc-thumb" data-doc-id="' + d.id + '"><div class="skel" style="width:100%;height:100%;"></div><span class="tag">' + escapeHtml(label) + "</span></div>";
     }).join("") + "</div>" : emptyState("icon-image-off", "No documents yet", "Upload documents from any Khata's profile page.")) +
     "</div>"
@@ -3284,9 +3670,7 @@ PAGES.adminAnalytics = function () {
 
   return (
     '<div class="page-head"><div><h1>Analytics</h1><p>Compensation, land, phase pipeline and escalation insights across every block.</p></div></div>' +
-    '<div class="kpi-grid mb-16">' + kpis.map(function (c) {
-      return '<div class="kpi-card"><div class="accentbar" style="background:' + c.grad + '"></div><div class="kpi-icon" style="background:' + c.grad + '"><i class="' + c.icon + ' i"></i></div><div class="kpi-value">' + c.value + '</div><div class="kpi-label">' + c.label + "</div></div>";
-    }).join("") + "</div>" +
+    '<div class="kpi-grid mb-16">' + kpis.map(PAGES.kpiCardHtml).join("") + "</div>" +
 
     '<div class="card mb-16"><div class="section-title">Open escalations <span class="muted">' + escalated.length + '</span></div>' +
     (escalated.length ? escalated.map(function (v) {
@@ -3311,10 +3695,28 @@ PAGES.adminAnalytics = function () {
   );
 };
 
+/* Cursor-driven 3D tilt on chart cards: rotates the card around the
+   X/Y axis based on pointer position, giving the flat Chart.js canvas
+   a "3D" hover feel without needing an actual 3D charting library. */
+function wireChartTilt() {
+  $all(".chart-card").forEach(function (card) {
+    card.addEventListener("mousemove", function (e) {
+      const rect = card.getBoundingClientRect();
+      const cx = rect.width / 2, cy = rect.height / 2;
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      const rotateY = ((x - cx) / cx) * 6;
+      const rotateX = -((y - cy) / cy) * 6;
+      card.style.transform = "perspective(900px) rotateX(" + rotateX.toFixed(2) + "deg) rotateY(" + rotateY.toFixed(2) + "deg) scale3d(1.02,1.02,1.02)";
+    });
+    card.addEventListener("mouseleave", function () { card.style.transform = ""; });
+  });
+}
+
 PAGES.afterAdminAnalytics = function () {
   Object.keys(STATE.charts).forEach(function (k) { STATE.charts[k].destroy(); });
   STATE.charts = {};
 
+  PAGES.animateKpiCounters();
   $all("[data-nav]").forEach(function (el) { el.addEventListener("click", function () { location.hash = el.getAttribute("data-nav"); }); });
 
   const blockIds = Object.keys(STATE.blocks);
@@ -3391,6 +3793,8 @@ PAGES.afterAdminAnalytics = function () {
   if (ctx5 && (docCounts.complete + docCounts.pending) > 0) {
     STATE.charts.docStatus = new Chart(ctx5, { type: "doughnut", data: { labels: ["Fully documented", "Pending documents"], datasets: [{ data: [docCounts.complete, docCounts.pending], backgroundColor: ["#10B981", "#F59E0B"] }] }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 11 } } } } } });
   } else if (ctx5) { ctx5.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Documentation status will appear here once khatas are added."); }
+
+  wireChartTilt();
 };
 
 /* ============================================================
@@ -3754,6 +4158,7 @@ function wirePWA() {
 function boot() {
   wireAdminModal();
   wireCompModal();
+  wireDocTagsModal();
   wireLightbox();
   wireRefreshButton();
   wireMobileBack();
