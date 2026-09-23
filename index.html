@@ -635,6 +635,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <a href="#/phases" class="navitem role-nav-phases" data-route="phases"><i class="icon-flag i"></i>Phases</a>
     <a href="#/blocks" class="navitem role-nav-blocks" data-route="blocks"><i class="icon-map i"></i>Blocks</a>
     <a href="#/villages" class="navitem role-nav-villages" data-route="villages"><i class="icon-map-pin i"></i>Villages</a>
+    <a href="#/plots" class="navitem role-nav-plots" data-route="plots"><i class="icon-layers i"></i>Plots</a>
     <a href="#/khatas" class="navitem role-nav-khatas" data-route="khatas"><i class="icon-file-text i"></i>All Khatas</a>
     <a href="#/documents" class="navitem role-nav-documents" data-route="documents"><i class="icon-folder i"></i>Documents</a>
 
@@ -661,6 +662,10 @@ nav.bottomnav a.active{color:var(--brand-2);}
     <a href="#/villages" class="role-nav-villages" data-route="villages">
       <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
       Villages
+    </a>
+    <a href="#/plots" class="role-nav-plots" data-route="plots">
+      <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+      Plots
     </a>
     <a href="#/khatas" class="role-nav-khatas" data-route="khatas">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
@@ -1361,6 +1366,43 @@ const DATA = {
     return DATA.khataList().filter(function (k) { return (k.location || {}).village === villageName; });
   },
 
+    /* Groups every plot record from every khata by village + plot number.
+     Cached until the khata data is reloaded. */
+  plotGroups: function () {
+    if (DATA._plotCache && DATA._plotCacheSrc === STATE.khatas) return DATA._plotCache;
+    const map = {};
+    Object.keys(STATE.khatas).forEach(function (khataId) {
+      const k = STATE.khatas[khataId];
+      const village = (k.location || {}).village || "";
+      const plots = k.plots || {};
+      Object.keys(plots).forEach(function (pid) {
+        const p = plots[pid] || {};
+        const plotNo = String(p.plotNo || "").trim();
+        if (!plotNo) return;
+        const key = village + "~" + plotNo;
+        let g = map[key];
+        if (!g) g = map[key] = { key: key, plotNo: plotNo, village: village, kissamList: [], totalAreaAcres: 0, acquiredAreaAcres: 0, entries: [], khataIds: {} };
+        if (p.kissam && g.kissamList.indexOf(p.kissam) === -1) g.kissamList.push(p.kissam);
+        g.totalAreaAcres = Math.max(g.totalAreaAcres, Number(p.totalAreaAcres) || 0);
+        g.acquiredAreaAcres += Number(p.acquiredAreaAcres) || 0;
+        g.entries.push({ khataId: khataId, khata: k, plot: p });
+        g.khataIds[khataId] = true;
+      });
+    });
+    const list = Object.keys(map).map(function (key) {
+      const g = map[key];
+      g.khataCount = Object.keys(g.khataIds).length;
+      return g;
+    });
+    DATA._plotCache = list;
+    DATA._plotCacheSrc = STATE.khatas;
+    return list;
+  },
+
+  plotGroupByKey: function (key) {
+    return DATA.plotGroups().find(function (g) { return g.key === key; }) || null;
+  },
+
   documentsForKhata: function (khataId) {
     const cache = STATE.khataDocuments[khataId];
     if (!cache) return [];
@@ -1556,7 +1598,7 @@ const UI = {
 
     // Executor: hide every nav item except Phases.
     const executorOnly = CAN.isExecutor();
-    ["dashboard", "blocks", "khatas", "documents"].forEach(function (r) {
+    ["dashboard", "blocks", "villages", "plots", "khatas", "documents"].forEach(function (r) {
       $all(".role-nav-" + r).forEach(function (el) { el.classList.toggle("hidden", executorOnly); });
     });
 
@@ -1581,6 +1623,7 @@ const Router = {
     if (parts[0] === "admin") return { name: parts[1] || "analytics", params: { id: parts[2] } };
     if (parts[0] === "blocks" && parts[1]) return { name: "blockDetail", params: { id: parts[1] } };
     if (parts[0] === "villages" && parts[1]) return { name: "villageDetail", params: { id: decodeURIComponent(parts[1]) } };
+    if (parts[0] === "plots" && parts[1]) return { name: "plotDetail", params: { id: decodeURIComponent(parts[1]) } };
     if (parts[0] === "khata" && parts[1]) return { name: "khataDetail", params: { id: parts[1], tab: parts[2] } };
     if (parts[0] === "phases" && parts[1]) return { name: "phaseDetail", params: { id: parts[1] } };
     return { name: parts[0], params: {} };
@@ -1608,7 +1651,7 @@ const Router = {
     STATE.currentRoute = route;
     UI.setActiveNav = UI.setActiveNav || function () {};
     $all("[data-route]").forEach(function (el) {
-      const r = route.name === "blockDetail" ? "blocks" : route.name === "villageDetail" ? "villages" : route.name === "khataDetail" ? "khatas" : route.name === "phaseDetail" ? "phases" : route.name;
+      const r = route.name === "blockDetail" ? "blocks" : route.name === "villageDetail" ? "villages" : route.name === "plotDetail" ? "plots" : route.name === "khataDetail" ? "khatas" : route.name === "phaseDetail" ? "phases" : route.name;
       el.classList.toggle("active", el.getAttribute("data-route") === r);
     });
 
@@ -1621,6 +1664,8 @@ const Router = {
       case "blockDetail": root.innerHTML = PAGES.blockDetail(route.params.id); PAGES.afterEntityGrid(); break;
       case "villages": root.innerHTML = PAGES.villagesList(); PAGES.afterEntityGrid(); break;
       case "villageDetail": root.innerHTML = PAGES.villageDetail(route.params.id); PAGES.afterEntityGrid(); break;
+      case "plots": root.innerHTML = PAGES.plotsList(); PAGES.afterPlotsList(); break;
+      case "plotDetail": root.innerHTML = PAGES.plotDetail(route.params.id); PAGES.afterEntityGrid(); break;
       case "khatas": root.innerHTML = PAGES.khatasList(); PAGES.afterEntityGrid(); break;
       case "khataDetail": root.innerHTML = PAGES.khataDetail(route.params.id); PAGES.afterKhataDetail(route.params.id, route.params.tab); break;
       case "documents": root.innerHTML = PAGES.documentsPage(); PAGES.afterDocumentsPage(); break;
@@ -1756,7 +1801,153 @@ PAGES.villageDetail = function (villageName) {
   );
 };
 
+/* ============================================================
+   PAGES - PLOTS (list + detail)
+   ============================================================ */
+const PLOTVIEW = { query: "", kissam: "all", sortBy: "plotAsc", limit: 60 };
 
+PAGES.PLOT_SORT_OPTIONS = [
+  { value: "plotAsc", label: "Plot No. (Low to High)" },
+  { value: "plotDesc", label: "Plot No. (High to Low)" },
+  { value: "acquiredDesc", label: "Acquired area (High to Low)" },
+  { value: "acquiredAsc", label: "Acquired area (Low to High)" },
+  { value: "khatasDesc", label: "Most khatas first" },
+];
+
+PAGES.filterPlots = function (groups) {
+  const q = (PLOTVIEW.query || "").trim().toLowerCase();
+  const list = groups.filter(function (g) {
+    if (PLOTVIEW.kissam !== "all" && g.kissamList.indexOf(PLOTVIEW.kissam) === -1) return false;
+    if (!q) return true;
+    if (g.plotNo.toLowerCase().indexOf(q) !== -1) return true;
+    return g.entries.some(function (e) {
+      return String(e.khata.khataNumber || "").toLowerCase().indexOf(q) !== -1 ||
+        String(e.khata.rtName || "").toLowerCase().indexOf(q) !== -1;
+    });
+  });
+  const byPlot = function (a, b) { return String(a.plotNo).localeCompare(String(b.plotNo), undefined, { numeric: true }); };
+  switch (PLOTVIEW.sortBy) {
+    case "plotDesc": list.sort(function (a, b) { return byPlot(b, a); }); break;
+    case "acquiredDesc": list.sort(function (a, b) { return b.acquiredAreaAcres - a.acquiredAreaAcres || byPlot(a, b); }); break;
+    case "acquiredAsc": list.sort(function (a, b) { return a.acquiredAreaAcres - b.acquiredAreaAcres || byPlot(a, b); }); break;
+    case "khatasDesc": list.sort(function (a, b) { return b.khataCount - a.khataCount || byPlot(a, b); }); break;
+    default: list.sort(byPlot);
+  }
+  return list;
+};
+
+PAGES.plotListHtml = function (list) {
+  if (!list.length) return emptyState("icon-search-x", "No plots found", "Try a different plot number, khata number, RT name or kissam.");
+  const shown = list.slice(0, PLOTVIEW.limit);
+  return '<div class="text-sm text-mute mt-8">Showing ' + shown.length + ' of ' + list.length + ' plot(s)</div>' +
+    '<div class="grid-cards mt-8">' + shown.map(function (g) {
+      return '<div class="entity-card" data-nav="#/plots/' + encodeURIComponent(g.key) + '">' +
+        '<div class="eyebrow">PLOT</div><h3>Plot No. ' + escapeHtml(g.plotNo) + '</h3>' +
+        '<div class="meta">' +
+        '<span><i class="icon-map-pin i"></i>' + escapeHtml(g.village || "\u2014") + '</span>' +
+        '<span><i class="icon-file-text i"></i>' + g.khataCount + ' khata(s)</span>' +
+        '<span><i class="icon-ruler i"></i>' + fmtAcres(g.acquiredAreaAcres) + ' acquired</span>' +
+        '</div>' +
+        '<div class="badge-row">' +
+        g.kissamList.map(function (ks) { return '<span class="badge badge-slate">' + escapeHtml(ks) + '</span>'; }).join("") +
+        (g.khataCount > 1 ? '<span class="badge badge-amber">Shared</span>' : '') +
+        '</div></div>';
+    }).join("") + '</div>' +
+    (list.length > shown.length
+      ? '<div class="mt-16"><button class="btn btn-ghost btn-sm" id="btnMorePlots"><i class="icon-plus i"></i>Show more</button></div>'
+      : '');
+};
+
+PAGES.plotsList = function () {
+  const crumbs = '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Plots</div>';
+  if (!STATE.loaded) return crumbs + skeletonCards(6);
+
+  const groups = DATA.plotGroups();
+  let totalArea = 0, acquiredArea = 0, shared = 0;
+  const kissams = {};
+  groups.forEach(function (g) {
+    totalArea += g.totalAreaAcres;
+    acquiredArea += g.acquiredAreaAcres;
+    if (g.khataCount > 1) shared++;
+    g.kissamList.forEach(function (ks) { kissams[ks] = true; });
+  });
+  const kissamNames = Object.keys(kissams).sort();
+  if (PLOTVIEW.kissam !== "all" && !kissams[PLOTVIEW.kissam]) PLOTVIEW.kissam = "all";
+
+  const kpis = [
+    { icon: "icon-layers", label: "Plots", value: groups.length, grad: "var(--brand-grad)" },
+    { icon: "icon-ruler", label: "Total plot area", value: Math.round(totalArea * 100) / 100, format: "acres", grad: "linear-gradient(135deg,#0891B2,#06B6D4)" },
+    { icon: "icon-ruler", label: "Acquired plot area", value: Math.round(acquiredArea * 100) / 100, format: "acres", grad: "var(--money-grad)" },
+    { icon: "icon-users", label: "Shared plots (2+ khatas)", value: shared, grad: "linear-gradient(135deg,#D97706,#F59E0B)" },
+  ];
+
+  return crumbs +
+    '<div class="page-head"><div><h1>Plots</h1><p>' + groups.length + ' plot(s) on record across every khata.</p></div></div>' +
+    '<div class="kpi-grid mb-16">' + kpis.map(PAGES.kpiCardHtml).join("") + '</div>' +
+    '<div class="card">' +
+    '<div class="flex gap-8" style="flex-wrap:wrap;align-items:center;">' +
+    '<div class="field" style="flex:1;min-width:200px;margin-bottom:0;"><input type="text" id="plotSearchInput" placeholder="Search plot no., khata no. or RT name" value="' + escapeHtml(PLOTVIEW.query) + '" autocomplete="off"></div>' +
+    '<div class="field" style="width:170px;margin-bottom:0;"><select id="plotKissamSelect">' +
+    '<option value="all">All kissams</option>' +
+    kissamNames.map(function (ks) { return '<option value="' + escapeHtml(ks) + '"' + (PLOTVIEW.kissam === ks ? " selected" : "") + '>' + escapeHtml(ks) + '</option>'; }).join("") +
+    '</select></div>' +
+    '<div class="field" style="width:220px;margin-bottom:0;"><select id="plotSortSelect">' +
+    PAGES.PLOT_SORT_OPTIONS.map(function (o) { return '<option value="' + o.value + '"' + (PLOTVIEW.sortBy === o.value ? " selected" : "") + '>' + escapeHtml(o.label) + '</option>'; }).join("") +
+    '</select></div>' +
+    '</div>' +
+    '<div id="plotListHost">' + PAGES.plotListHtml(PAGES.filterPlots(groups)) + '</div>' +
+    '</div>';
+};
+
+PAGES.afterPlotsList = function () {
+  PAGES.animateKpiCounters();
+  const host = $("#plotListHost");
+  if (!host) return;
+  // Only the list area is refreshed while filtering, so the search box keeps focus.
+  const refresh = function (resetLimit) {
+    if (resetLimit) PLOTVIEW.limit = 60;
+    host.innerHTML = PAGES.plotListHtml(PAGES.filterPlots(DATA.plotGroups()));
+  };
+  host.addEventListener("click", function (e) {
+    if (e.target.closest("#btnMorePlots")) { PLOTVIEW.limit += 60; refresh(false); return; }
+    const card = e.target.closest("[data-nav]");
+    if (card) location.hash = card.getAttribute("data-nav");
+  });
+  $("#plotSearchInput").addEventListener("input", debounce(function (e) { PLOTVIEW.query = e.target.value; refresh(true); }, 200));
+  $("#plotKissamSelect").addEventListener("change", function (e) { PLOTVIEW.kissam = e.target.value; refresh(true); });
+  $("#plotSortSelect").addEventListener("change", function (e) { PLOTVIEW.sortBy = e.target.value; refresh(true); });
+};
+
+PAGES.plotDetail = function (key) {
+  if (!STATE.loaded) return skeletonCards(3);
+  const g = DATA.plotGroupByKey(key);
+  if (!g) return emptyState("icon-triangle-alert", "Plot not found", "No khata has this plot on record.");
+
+  const entries = g.entries.slice().sort(function (a, b) {
+    return String(a.khata.khataNumber || "").localeCompare(String(b.khata.khataNumber || ""), undefined, { numeric: true });
+  });
+
+  return (
+    '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/plots">Plots</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Plot ' + escapeHtml(g.plotNo) + '</div>' +
+    '<div class="rt-hero"><div><h1>Plot No. ' + escapeHtml(g.plotNo) + '</h1><div class="sub">' + escapeHtml(g.village || "") + (g.kissamList.length ? ' &middot; ' + escapeHtml(g.kissamList.join(", ")) : '') + '</div></div>' +
+    '<div class="stat-row">' +
+    '<div class="stat"><b>' + fmtAcres(g.totalAreaAcres) + '</b><span>Plot area</span></div>' +
+    '<div class="stat"><b>' + fmtAcres(g.acquiredAreaAcres) + '</b><span>Acquired (all khatas)</span></div>' +
+    '<div class="stat"><b>' + g.khataCount + '</b><span>Khata(s)</span></div>' +
+    '</div></div>' +
+    '<div class="card"><div class="section-title">Khatas holding this plot <span class="muted">' + entries.length + ' record(s)</span></div>' +
+    entries.map(function (e) {
+      const blockName = (STATE.blocks[e.khata.blockId] || {}).blockName || "";
+      return '<div class="sub-item-card" data-nav="#/khata/' + e.khataId + '/plots" style="cursor:pointer;">' +
+        '<div><div class="name">Khata ' + escapeHtml(e.khata.khataNumber || "") + ' &middot; ' + escapeHtml(e.khata.rtName || "Unnamed RT") + '</div>' +
+        '<div class="details">Kissam: ' + escapeHtml(e.plot.kissam || "\u2014") +
+        ' &middot; Total: ' + fmtAcres(e.plot.totalAreaAcres) +
+        ' &middot; Acquired: ' + fmtAcres(e.plot.acquiredAreaAcres) + '</div></div>' +
+        '<span class="badge badge-brand">' + escapeHtml(blockName || "\u2014") + '</span></div>';
+    }).join("") +
+    '</div>'
+  );
+};
 
 PAGES.blocksList = function () {
   const ids = Object.keys(STATE.blocks);
@@ -2914,6 +3105,9 @@ PAGES.khataDetail = function (khataId) {
   const structureCount = Number(k.structureCount) || 0;
   const treeCount = Number(k.treeCount) || 0;
   const docCount = Number(k.docCount) || 0;
+  const plots = Object.keys(k.plots || {}).map(function (id) { return Object.assign({ id: id }, k.plots[id]); })
+    .sort(function (a, b) { return String(a.plotNo || "").localeCompare(String(b.plotNo || ""), undefined, { numeric: true }); });
+  const plotCount = plots.length;
   const status = (k.metadata || {}).status || "On record";
   const khataPhaseViews = DATA.khataPhaseEntries(khataId).map(DATA.pkView);
   const breadcrumbHtml = CAN.isExecutor()
@@ -2926,7 +3120,7 @@ PAGES.khataDetail = function (khataId) {
     '<div class="rt-hero"><div><h1>' + escapeHtml(k.rtName || "Unnamed RT") + '</h1><div class="sub">Khata ' + escapeHtml(k.khataNumber) + " &middot; " + escapeHtml(k.rtId || "&mdash;") + " &middot; " + escapeHtml(block.blockName || "") + "</div></div>" +
     '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structureCount + '</b><span>Structures</span></div><div class="stat"><b>' + treeCount + '</b><span>Tree records</span></div></div></div>' +
 
-    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docCount + ')</button>' +
+    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="plots">Plots (' + plotCount + ')</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docCount + ')</button>' +
     (CAN.canSeeCompensation() ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
@@ -2949,6 +3143,7 @@ PAGES.khataDetail = function (khataId) {
     PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
     "</div></div></div>" +
 
+    '<div class="tabpanel" data-panel="plots">' + PAGES.plotsTabHtml(plots) + '</div>' +
     '<div class="tabpanel" data-panel="structures"><div class="card"><div class="section-title">Structures <span class="muted">' + structureCount + ' record(s)</span></div>' +
     (!extras ? skeletonCards(2) : (structures.length ? structures.map(function (s) {
       return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(s.type || "Structure") + '</div><div class="details">' + escapeHtml(s.usage || "") + (s.area ? " &middot; " + escapeHtml(s.area) : "") + (s.remarks ? " &middot; " + escapeHtml(s.remarks) : "") + '</div></div><span class="badge badge-slate">' + escapeHtml(s.condition || "&mdash;") + "</span></div>";
@@ -2969,6 +3164,36 @@ PAGES.khataDetail = function (khataId) {
 PAGES.defItem = function (label, value) {
   const display = (value != null && value !== "" && value !== "&mdash;") ? escapeHtml(value) : "&mdash;";
   return '<div class="item"><b>' + display + "</b><span>" + escapeHtml(label) + "</span></div>";
+};
+
+PAGES.plotsTabHtml = function (plots) {
+  if (!plots.length) {
+    return '<div class="card">' + emptyState("icon-map", "No plots recorded", "No plot entries exist for this Khata.") + '</div>';
+  }
+  let totalArea = 0, acquiredArea = 0;
+  plots.forEach(function (p) {
+    totalArea += Number(p.totalAreaAcres) || 0;
+    acquiredArea += Number(p.acquiredAreaAcres) || 0;
+  });
+
+  const summary = '<div class="card mb-16"><div class="section-title">Plot summary</div><div class="deflist">' +
+    PAGES.defItem("Number of plots", String(plots.length)) +
+    PAGES.defItem("Total plot area", fmtAcres(totalArea)) +
+    PAGES.defItem("Acquired plot area", fmtAcres(acquiredArea)) +
+    '</div></div>';
+
+  const rows = plots.map(function (p) {
+    const fullyAcquired = (Number(p.acquiredAreaAcres) || 0) >= (Number(p.totalAreaAcres) || 0) && Number(p.totalAreaAcres) > 0;
+    return '<div class="sub-item-card">' +
+      '<div><div class="name">Plot No. ' + escapeHtml(p.plotNo || "&mdash;") + '</div>' +
+      '<div class="details">Kissam: ' + escapeHtml(p.kissam || "&mdash;") +
+      ' &middot; Total: ' + fmtAcres(p.totalAreaAcres) +
+      ' &middot; Acquired: ' + fmtAcres(p.acquiredAreaAcres) + '</div></div>' +
+      '<span class="badge ' + (fullyAcquired ? "badge-green" : "badge-amber") + '">' + (fullyAcquired ? "Fully acquired" : "Partly acquired") + '</span>' +
+      '</div>';
+  }).join("");
+
+  return summary + '<div class="card"><div class="section-title">Plots <span class="muted">' + plots.length + ' record(s)</span></div>' + rows + '</div>';
 };
 
 PAGES.compensationTabHtml = function (khataId) {
@@ -3274,7 +3499,7 @@ const ZIPDOWNLOAD = {
    BULK IMPORT
    ============================================================ */
 const IMPORT = {
-  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedUpdateRows: [],
+  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedPlotRows: [], parsedUpdateRows: [],
   REQUIRED_COLUMNS: ["blockName", "khataNumber", "rtName"],
   TEMPLATE_COLUMNS: ["blockName", "blockCode", "village", "district", "khataNumber", "rtName", "acquiredLandAcres", "landCategory", "landAmount", "structureAmount", "treeAmount", "exGratia", "status"],
   STRUCTURE_COLUMNS: ["blockName", "khataNumber", "type", "area", "condition", "usage", "remarks"],
@@ -3299,7 +3524,7 @@ const IMPORT = {
     reader.onload = function (e) {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
-        const RESERVED_SHEETS = ["Structures", "Trees", "UpdateKhatas"];
+        const RESERVED_SHEETS = ["Structures", "Trees", "Plots", "UpdateKhatas"];
         const firstSheetName = wb.SheetNames[0];
         const kSheet = wb.Sheets["Khatas"] || (RESERVED_SHEETS.indexOf(firstSheetName) === -1 ? wb.Sheets[firstSheetName] : null);
         const rows = kSheet ? XLSX.utils.sheet_to_json(kSheet, { defval: "" }) : [];
@@ -3307,9 +3532,11 @@ const IMPORT = {
         const structureRows = sSheet ? XLSX.utils.sheet_to_json(sSheet, { defval: "" }) : [];
         const tSheet = wb.Sheets["Trees"];
         const treeRows = tSheet ? XLSX.utils.sheet_to_json(tSheet, { defval: "" }) : [];
+        const pSheet = wb.Sheets["Plots"];
+        const plotRows = pSheet ? XLSX.utils.sheet_to_json(pSheet, { defval: "" }) : [];
         const uSheet = wb.Sheets["UpdateKhatas"];
         const updateRows = uSheet ? XLSX.utils.sheet_to_json(uSheet, { defval: "" }) : [];
-        IMPORT.validateAndPreview(rows, structureRows, treeRows, updateRows);
+        IMPORT.validateAndPreview(rows, structureRows, treeRows, plotRows, updateRows);
       } catch (err) {
         showToast("Could not read that file - is it a valid .xlsx?", "error");
       }
@@ -3317,8 +3544,9 @@ const IMPORT = {
     reader.readAsArrayBuffer(file);
   },
 
-  validateAndPreview: function (rows, structureRows, treeRows, updateRows) {
+  validateAndPreview: function (rows, structureRows, treeRows, plotRows, updateRows) {
     updateRows = updateRows || [];
+    plotRows = plotRows || [];
     const missingCols = IMPORT.REQUIRED_COLUMNS.filter(function (c) { return rows.length && !(c in rows[0]); });
     const host = $("#importPreview");
     if (rows.length && missingCols.length) {
@@ -3329,11 +3557,12 @@ const IMPORT = {
     const validRows = rows.filter(function (r) { return r.khataNumber && r.rtName && r.blockName; });
     const validStructures = structureRows.filter(function (r) { return r.blockName && r.khataNumber; });
     const validTrees = treeRows.filter(function (r) { return r.blockName && r.khataNumber; });
+    const validPlots = plotRows.filter(function (r) { return r.blockName && r.khataNumber; });
     const validUpdates = updateRows.filter(function (r) { return r.blockName && r.khataNumber; });
     IMPORT.parsedRows = validRows; IMPORT.parsedStructureRows = validStructures;
-    IMPORT.parsedTreeRows = validTrees; IMPORT.parsedUpdateRows = validUpdates;
+    IMPORT.parsedTreeRows = validTrees; IMPORT.parsedPlotRows = validPlots; IMPORT.parsedUpdateRows = validUpdates;
 
-    if (!validRows.length && !validStructures.length && !validTrees.length && !validUpdates.length) {
+    if (!validRows.length && !validStructures.length && !validTrees.length && !validPlots.length && !validUpdates.length) {
       host.innerHTML = emptyState("icon-triangle-alert", "Nothing to import", "No valid rows found in any sheet.");
       return;
     }
@@ -3341,26 +3570,27 @@ const IMPORT = {
       '<div class="badge badge-brand">' + validRows.length + ' khata row(s)</div> ' +
       '<div class="badge badge-brand">' + validStructures.length + ' structure row(s)</div> ' +
       '<div class="badge badge-brand">' + validTrees.length + ' tree row(s)</div> ' +
+      '<div class="badge badge-brand">' + validPlots.length + ' plot row(s)</div> ' +
       '<div class="badge badge-brand">' + validUpdates.length + ' field-update row(s)</div>' +
       '<button class="btn btn-primary btn-sm mt-16" id="btnConfirmImport"><i class="icon-upload i"></i>Import</button>';
     $("#btnConfirmImport").addEventListener("click", IMPORT.submit);
   },
 
-  submit: function () {
-    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedUpdateRows.length) return;
+    submit: function () {
+    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedPlotRows.length && !IMPORT.parsedUpdateRows.length) return;
     const btn = $("#btnConfirmImport");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Importing&hellip;</span>';
-    const p1 = (IMPORT.parsedRows.length || IMPORT.parsedStructureRows.length || IMPORT.parsedTreeRows.length)
-      ? API.post("bulkImport", { rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows })
-      : Promise.resolve({ khatasCreated: 0, structuresAdded: 0, treesAdded: 0 });
+    const p1 = (IMPORT.parsedRows.length || IMPORT.parsedStructureRows.length || IMPORT.parsedTreeRows.length || IMPORT.parsedPlotRows.length)
+      ? API.post("bulkImport", { token: STATE.token, rows: IMPORT.parsedRows, structureRows: IMPORT.parsedStructureRows, treeRows: IMPORT.parsedTreeRows, plotRows: IMPORT.parsedPlotRows })
+      : Promise.resolve({ khatasCreated: 0, structuresAdded: 0, treesAdded: 0, plotsAdded: 0 });
     p1.then(function (data) {
       const p2 = IMPORT.parsedUpdateRows.length
-        ? API.post("updateKhataFields", { rows: IMPORT.parsedUpdateRows })
+        ? API.post("updateKhataFields", { token: STATE.token, rows: IMPORT.parsedUpdateRows })
         : Promise.resolve({ matched: 0 });
       return p2.then(function (updData) {
-        showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + updData.matched + " field update(s) done.", "success");
+        showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + data.plotsAdded + " plot(s), " + updData.matched + " field update(s) done.", "success");
         $("#importPreview").innerHTML = "";
-        IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedUpdateRows = [];
+        IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedPlotRows = []; IMPORT.parsedUpdateRows = [];
         return DATA.loadBootstrap();
       });
     })
