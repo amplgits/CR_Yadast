@@ -1804,7 +1804,27 @@ PAGES.villageDetail = function (villageName) {
 /* ============================================================
    PAGES - PLOTS (list + detail)
    ============================================================ */
-const PLOTVIEW = { query: "", kissam: "all", sortBy: "plotAsc", limit: 60 };
+const PLOTVIEW = { query: "", kissam: "all", status: "all", sortBy: "plotAsc", limit: 60 };
+
+/* A plot is "Non-Acquired" when part of its area is still not acquired:
+   acquired area (summed across every khata holding it) < plot's total area. */
+PAGES.plotNonAcquiredAcres = function (g) {
+  return Math.max(0, Math.round((g.totalAreaAcres - g.acquiredAreaAcres) * 100) / 100);
+};
+PAGES.plotIsNonAcquired = function (g) { return PAGES.plotNonAcquiredAcres(g) > 0; };
+PAGES.plotIsShared = function (g) { return g.khataCount > 1; };
+
+PAGES.plotStatusTabsHtml = function (groups) {
+  const tabs = [
+    { key: "all", label: "All plots", count: groups.length },
+    { key: "nonAcquired", label: "Non-Acquired", count: groups.filter(function (g) { return PAGES.plotIsNonAcquired(g); }).length },
+    { key: "shared", label: "Shared", count: groups.filter(function (g) { return PAGES.plotIsShared(g); }).length },
+  ];
+  return '<div class="tabs">' + tabs.map(function (t) {
+    return '<button class="tab-btn' + (PLOTVIEW.status === t.key ? " active" : "") + '" data-plot-status="' + t.key + '">' +
+      t.label + ' <span class="muted">' + t.count + '</span></button>';
+  }).join("") + '</div>';
+};
 
 PAGES.PLOT_SORT_OPTIONS = [
   { value: "plotAsc", label: "Plot No. (Low to High)" },
@@ -1812,12 +1832,15 @@ PAGES.PLOT_SORT_OPTIONS = [
   { value: "acquiredDesc", label: "Acquired area (High to Low)" },
   { value: "acquiredAsc", label: "Acquired area (Low to High)" },
   { value: "khatasDesc", label: "Most khatas first" },
+    { value: "nonAcqDesc", label: "Non-acquired area (High to Low)" },
 ];
 
 PAGES.filterPlots = function (groups) {
   const q = (PLOTVIEW.query || "").trim().toLowerCase();
   const list = groups.filter(function (g) {
     if (PLOTVIEW.kissam !== "all" && g.kissamList.indexOf(PLOTVIEW.kissam) === -1) return false;
+    if (PLOTVIEW.status === "nonAcquired" && !PAGES.plotIsNonAcquired(g)) return false;
+    if (PLOTVIEW.status === "shared" && !PAGES.plotIsShared(g)) return false;
     if (!q) return true;
     if (g.plotNo.toLowerCase().indexOf(q) !== -1) return true;
     return g.entries.some(function (e) {
@@ -1831,6 +1854,7 @@ PAGES.filterPlots = function (groups) {
     case "acquiredDesc": list.sort(function (a, b) { return b.acquiredAreaAcres - a.acquiredAreaAcres || byPlot(a, b); }); break;
     case "acquiredAsc": list.sort(function (a, b) { return a.acquiredAreaAcres - b.acquiredAreaAcres || byPlot(a, b); }); break;
     case "khatasDesc": list.sort(function (a, b) { return b.khataCount - a.khataCount || byPlot(a, b); }); break;
+    case "nonAcqDesc": list.sort(function (a, b) { return PAGES.plotNonAcquiredAcres(b) - PAGES.plotNonAcquiredAcres(a) || byPlot(a, b); }); break;
     default: list.sort(byPlot);
   }
   return list;
@@ -1850,7 +1874,8 @@ PAGES.plotListHtml = function (list) {
         '</div>' +
         '<div class="badge-row">' +
         g.kissamList.map(function (ks) { return '<span class="badge badge-slate">' + escapeHtml(ks) + '</span>'; }).join("") +
-        (g.khataCount > 1 ? '<span class="badge badge-amber">Shared</span>' : '') +
+        (PAGES.plotIsShared(g) ? '<span class="badge badge-amber">Shared</span>' : '') +
+        (PAGES.plotIsNonAcquired(g) ? '<span class="badge badge-rose">Non-acquired ' + fmtAcres(PAGES.plotNonAcquiredAcres(g)) + '</span>' : '') +
         '</div></div>';
     }).join("") + '</div>' +
     (list.length > shown.length
@@ -1884,6 +1909,7 @@ PAGES.plotsList = function () {
   return crumbs +
     '<div class="page-head"><div><h1>Plots</h1><p>' + groups.length + ' plot(s) on record across every khata.</p></div></div>' +
     '<div class="kpi-grid mb-16">' + kpis.map(PAGES.kpiCardHtml).join("") + '</div>' +
+    PAGES.plotStatusTabsHtml(groups) +
     '<div class="card">' +
     '<div class="flex gap-8" style="flex-wrap:wrap;align-items:center;">' +
     '<div class="field" style="flex:1;min-width:200px;margin-bottom:0;"><input type="text" id="plotSearchInput" placeholder="Search plot no., khata no. or RT name" value="' + escapeHtml(PLOTVIEW.query) + '" autocomplete="off"></div>' +
@@ -1916,6 +1942,13 @@ PAGES.afterPlotsList = function () {
   $("#plotSearchInput").addEventListener("input", debounce(function (e) { PLOTVIEW.query = e.target.value; refresh(true); }, 200));
   $("#plotKissamSelect").addEventListener("change", function (e) { PLOTVIEW.kissam = e.target.value; refresh(true); });
   $("#plotSortSelect").addEventListener("change", function (e) { PLOTVIEW.sortBy = e.target.value; refresh(true); });
+  $all("[data-plot-status]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      PLOTVIEW.status = btn.getAttribute("data-plot-status");
+      $all("[data-plot-status]").forEach(function (b) { b.classList.toggle("active", b === btn); });
+      refresh(true);
+    });
+  });
 };
 
 PAGES.plotDetail = function (key) {
@@ -1933,6 +1966,7 @@ PAGES.plotDetail = function (key) {
     '<div class="stat-row">' +
     '<div class="stat"><b>' + fmtAcres(g.totalAreaAcres) + '</b><span>Plot area</span></div>' +
     '<div class="stat"><b>' + fmtAcres(g.acquiredAreaAcres) + '</b><span>Acquired (all khatas)</span></div>' +
+    '<div class="stat"><b>' + fmtAcres(PAGES.plotNonAcquiredAcres(g)) + '</b><span>Non-acquired</span></div>' +
     '<div class="stat"><b>' + g.khataCount + '</b><span>Khata(s)</span></div>' +
     '</div></div>' +
     '<div class="card"><div class="section-title">Khatas holding this plot <span class="muted">' + entries.length + ' record(s)</span></div>' +
