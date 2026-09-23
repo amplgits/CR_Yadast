@@ -1429,6 +1429,26 @@ const DATA = {
     });
   },
 
+    khataNumberCounts: function () {
+    if (DATA._khNumCache && DATA._khNumCacheSrc === STATE.khatas) return DATA._khNumCache;
+    const counts = {};
+    DATA.khataList().forEach(function (k) {
+      const num = String(k.khataNumber || "").trim();
+      if (!num) return;
+      counts[num] = (counts[num] || 0) + 1;
+    });
+    DATA._khNumCache = counts;
+    DATA._khNumCacheSrc = STATE.khatas;
+    return counts;
+  },
+
+  isKhataShared: function (k) {
+    const counts = DATA.khataNumberCounts();
+    return (counts[String(k.khataNumber || "").trim()] || 0) > 1;
+  },
+
+  blockKPIs: function () { return STATE.stats || {}; },
+
   blockKPIs: function () { return STATE.stats || {}; },
 
   totalCompensation: function () {
@@ -1478,7 +1498,10 @@ const DATA = {
   khataPhaseEntries: function (khataId) {
     return Object.keys(STATE.phaseKhatas)
       .map(function (id) { return Object.assign({ id: id }, STATE.phaseKhatas[id]); })
-      .filter(function (pk) { return pk.khataId === khataId; });
+      .filter(function (pk) {
+        const group = Array.isArray(pk.khataIds) && pk.khataIds.length ? pk.khataIds : [pk.khataId];
+        return group.indexOf(khataId) !== -1;
+      });
   },
 
   pkView: function (pk) {
@@ -2010,15 +2033,17 @@ PAGES.blocksList = function () {
 PAGES.filterKhatasByStatus = function (khatas, filter) {
   if (filter === "blocked") return khatas.filter(function (k) { return /blocked/i.test((k.metadata || {}).status || ""); });
   if (filter === "approved") return khatas.filter(function (k) { return !/blocked/i.test((k.metadata || {}).status || ""); });
+  if (filter === "shared") return khatas.filter(function (k) { return DATA.isKhataShared(k); });
   return khatas;
 };
 
-PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount) {
+PAGES.statusFilterTabsHtml = function (allCount, approvedCount, blockedCount, sharedCount) {
   const f = STATE.khataStatusFilter;
   return '<div class="tabs">' +
     '<button class="tab-btn' + (f === "all" ? " active" : "") + '" data-status-filter="all">All <span class="muted">' + allCount + "</span></button>" +
     '<button class="tab-btn' + (f === "approved" ? " active" : "") + '" data-status-filter="approved">CR Approved <span class="muted">' + approvedCount + "</span></button>" +
     '<button class="tab-btn' + (f === "blocked" ? " active" : "") + '" data-status-filter="blocked">Blocked <span class="muted">' + blockedCount + "</span></button>" +
+    '<button class="tab-btn' + (f === "shared" ? " active" : "") + '" data-status-filter="shared">Shared khatas <span class="muted">' + sharedCount + "</span></button>" +
     "</div>";
 };
 
@@ -2135,6 +2160,7 @@ PAGES.blockDetail = function (blockId) {
   const khatas = DATA.khatasForBlock(blockId);
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
+  const sharedCount = PAGES.filterKhatasByStatus(khatas, "shared").length;
   let filtered = PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter);
   filtered = PAGES.searchKhatas(filtered, STATE.khataSearchQuery);
   filtered = PAGES.sortKhatas(filtered, STATE.khataSortBy);
@@ -2142,7 +2168,7 @@ PAGES.blockDetail = function (blockId) {
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/blocks">Blocks</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(block.blockName) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(block.blockName) + "</h1><p>" + escapeHtml(block.blockCode || "") + " &middot; " + escapeHtml(loc.village || "") + ", " + escapeHtml(loc.district || "") + "</p></div></div>" +
-    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount, sharedCount) +
     PAGES.khataFilterBarHtml(khatas) +
     '<div class="section-title mt-16">Khatas in this block <span class="muted">' + filtered.length + " shown</span></div>" +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
@@ -2157,6 +2183,7 @@ PAGES.khatasList = function () {
   }
   const approvedCount = PAGES.filterKhatasByStatus(khatas, "approved").length;
   const blockedCount = PAGES.filterKhatasByStatus(khatas, "blocked").length;
+  const sharedCount = PAGES.filterKhatasByStatus(khatas, "shared").length;
   const docCompleteCount = PAGES.filterKhatasByDoc(khatas, "complete").length;
   const docIncompleteCount = PAGES.filterKhatasByDoc(khatas, "incomplete").length;
   let filtered = PAGES.filterKhatasByDoc(PAGES.filterKhatasByStatus(khatas, STATE.khataStatusFilter), STATE.khataDocFilter);
@@ -2165,7 +2192,7 @@ PAGES.khatasList = function () {
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> All Khatas</div>' +
     '<div class="page-head"><div><h1>All Khata records</h1><p>' + khatas.length + " record(s) across every block.</p></div></div>" +
-    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount) +
+    PAGES.statusFilterTabsHtml(khatas.length, approvedCount, blockedCount, sharedCount) +
     PAGES.khataFilterBarHtml(khatas) +
     '<div class="mt-16"></div>' +
     PAGES.khataCardsHtml(filtered, { emptyMsg: "No khatas match this filter." })
@@ -3346,7 +3373,8 @@ PAGES.replicateRowHtml = function (docs) {
 PAGES.documentChecklistHtml = function (khataId, docs, categoryFilter) {
   categoryFilter = categoryFilter || "all";
   const matches = function (d) { return categoryFilter === "all" || docHasCategory(d, categoryFilter); };
-  const uploadsBlocked = !UPLOAD.selectedCategories().length;
+  const notEnlisted = !DATA.khataPhaseEntries(khataId).length;
+  const uploadsBlocked = notEnlisted || !UPLOAD.selectedCategories().length;
 
   const uploadedByType = {};
   docs.forEach(function (d) { (uploadedByType[d.documentType] = uploadedByType[d.documentType] || []).push(d); });
@@ -3380,7 +3408,8 @@ PAGES.documentChecklistHtml = function (khataId, docs, categoryFilter) {
   }).join("");
 
   return '<div class="card mb-16"><div class="section-title">Document checklist <span class="muted">' + uploadedCount + "/" + DOC_TYPES.length + ' uploaded &middot; all optional</span></div>' +
-    (uploadsBlocked ? '<div class="badge badge-amber mb-16"><i class="icon-triangle-alert i"></i> Tick at least one category above to enable uploading</div>' : '') +
+    (notEnlisted ? '<div class="badge badge-rose mb-16"><i class="icon-lock i"></i> This khata must be enlisted in a phase before documents can be uploaded</div>'
+      : (uploadsBlocked ? '<div class="badge badge-amber mb-16"><i class="icon-triangle-alert i"></i> Tick at least one category above to enable uploading</div>' : '')) +
     items +
     (docs.length ? '<button class="btn btn-primary btn-sm mt-16" id="btnDownloadAllDocs" data-khata="' + khataId + '"><i class="icon-download i"></i>Download all as ZIP</button>' : "") +
     "</div>";
