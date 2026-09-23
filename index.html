@@ -825,7 +825,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 </div>
 
 <div class="modal-backdrop" id="pkDetailModal">
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:480px;position:relative;">
     <div id="pkModalBody"><!-- rendered by PKModal.render() --></div>
   </div>
 </div>
@@ -2649,7 +2649,7 @@ const PKModal = {
           '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
           '<button class="btn btn-ghost btn-sm" data-notice-view="' + n.id + '"><i class="icon-eye i"></i>View</button>' +
           (CAN.isAdminOnly() ? '<button class="btn btn-ghost btn-sm" data-notice-download="' + n.id + '" title="Download" aria-label="Download" style="font-size:14px;line-height:1;padding:6px 10px;">\u2B07\uFE0E</button>' : '') +
-          (CAN.fullControl() ? '<button class="btn btn-danger btn-sm" data-notice-delete="' + n.id + '" title="Delete" aria-label="Delete" style="font-size:14px;line-height:1;padding:6px 10px;">\u2716</button>' : '') +
+          (CAN.fullControl() ? '<button class="btn btn-danger btn-sm" data-notice-delete="' + n.id + '" title="Delete notice" aria-label="Delete notice" style="font-size:12.5px;line-height:1;padding:6px 10px;">Delete</button>' : '') +
           '</div></div>';
       });
       html += '</div>';
@@ -2726,7 +2726,8 @@ const PKModal = {
     const noticeList = noticeDocList(pk);
     const noticeDoc = noticeList.length ? noticeList[0] : null; // truthy = at least one notice exists (used by the "Notice served" checkbox below)
 
-    let html = '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
+    let html = '<button class="btn btn-ghost btn-sm" id="btnClosePk" style="position:absolute;top:14px;right:14px;padding:6px 10px;font-size:12.5px;z-index:2;" title="Close" aria-label="Close">Close</button>' +
+      '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
       '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
       '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "")) + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
 
@@ -2776,8 +2777,7 @@ const PKModal = {
         ? '<div class="btn-row" style="justify-content:flex-start;margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">' +
           '<button class="btn btn-danger btn-sm" id="btnRemoveFromPhase"><i class="icon-x-circle i"></i>Remove from this phase</button>' +
           '</div>'
-        : '') +
-      '<div class="btn-row" style="margin-top:8px;"><button class="btn btn-ghost btn-sm" id="btnClosePk">Close</button></div>';
+        : '');
 
     $("#pkModalBody").innerHTML = html;
     PKModal.wire();
@@ -3065,13 +3065,29 @@ const PKModal = {
    khata's phase journey, generated client-side with jsPDF.
    ============================================================ */
 const ReportPDF = {
+  // jsPDF's standard fonts (helvetica) have no ₹ glyph — it renders as garbage.
+  // "Rs." is safe in every font and unambiguous on a printed/PDF report.
+  fmtRs: function (n) {
+    if (n == null || isNaN(n)) return "Rs. 0";
+    const neg = n < 0; n = Math.abs(Math.round(n));
+    let s = String(n), last3 = s.slice(-3), rest = s.slice(0, -3);
+    if (rest !== "") last3 = "," + last3;
+    rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+    return (neg ? "-" : "") + "Rs. " + rest + last3;
+  },
+
   generate: function (pkId) {
     const pk = STATE.phaseKhatas[pkId];
     if (!pk) { showToast("Could not find this record.", "error"); return; }
     const v = DATA.pkView(Object.assign({ id: pkId }, pk));
-    const khata = v.khata, block = v.block;
+    const khata = v.khata, block = v.block, loc = khata.location || {}, land = khata.land || {};
     const phase = STATE.phases[pk.phaseId] || {};
     const comp = STATE.compensation[pk.khataId];
+    const docs = DATA.documentsForKhata(pk.khataId);
+    const extras = STATE.khataExtras[pk.khataId] || { structures: {}, trees: {} };
+    const structures = Object.keys(extras.structures || {}).map(function (id) { return extras.structures[id]; });
+    const trees = Object.keys(extras.trees || {}).map(function (id) { return extras.trees[id]; });
+    const plots = Object.keys(khata.plots || {}).map(function (id) { return khata.plots[id]; });
 
     const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
     if (!jsPDFCtor) { showToast("PDF library failed to load. Check your connection and try again.", "error"); return; }
@@ -3079,91 +3095,334 @@ const ReportPDF = {
     const doc = new jsPDFCtor({ unit: "pt", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const brand = [67, 56, 202], money = [4, 120, 87], ink = [15, 23, 42], soft = [71, 85, 105], mute = [148, 163, 184];
+    const M = 40;
+    const brand = [67, 56, 202], brand2 = [37, 99, 235], money = [4, 120, 87],
+          ink = [15, 23, 42], soft = [71, 85, 105], mute = [148, 163, 184],
+          line = [226, 232, 240], panel = [248, 250, 252], rose = [190, 18, 60];
+    const fmtRs = ReportPDF.fmtRs;
+    const clean = function (s) { return (s == null || s === "") ? "\u2014" : String(s).replace("&mdash;", "\u2014"); };
 
-    // Header band
+    let pageNum = 1;
+    const totalPagesExp = "{total_pages_count_string}";
+
+    function footer() {
+      doc.setDrawColor(line[0], line[1], line[2]);
+      doc.line(M, pageH - 46, pageW - M, pageH - 46);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+      doc.setTextColor(mute[0], mute[1], mute[2]);
+      doc.text("RT Compensation Management System", M, pageH - 30);
+      doc.text("Generated on " + fmtDMY(Date.now()), pageW - M, pageH - 30, { align: "right" });
+      doc.text("Page " + pageNum + " of " + totalPagesExp, pageW / 2, pageH - 30, { align: "center" });
+    }
+
+    function drawSlimHeader() {
+      doc.setFillColor(brand[0], brand[1], brand[2]);
+      doc.rect(0, 0, pageW, 46, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+      doc.text("Khata Progress Report \u2014 " + (khata.khataNumber || ""), M, 29, { maxWidth: pageW * 0.55 });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      doc.text(clean(khata.rtName), pageW - M, 29, { align: "right", maxWidth: pageW * 0.38 });
+    }
+
+    function newPage() {
+      footer();
+      doc.addPage();
+      pageNum++;
+      drawSlimHeader();
+      return 76;
+    }
+
+    function ensureSpace(y, needed) {
+      if (y + needed > pageH - 60) return newPage();
+      return y;
+    }
+
+    function sectionTitle(y, title) {
+      y = ensureSpace(y, 34);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.setTextColor(ink[0], ink[1], ink[2]);
+      doc.text(title, M, y);
+      doc.setDrawColor(brand[0], brand[1], brand[2]);
+      doc.setLineWidth(1.6);
+      doc.line(M, y + 6, M + 34, y + 6);
+      doc.setLineWidth(1);
+      doc.setDrawColor(line[0], line[1], line[2]);
+      doc.line(M, y + 14, pageW - M, y + 14);
+      return y + 32;
+    }
+
+    // Two-column key/value grid. Row height grows to fit wrapped text so
+    // nothing overlaps the row below it.
+    function kvGrid(y, rows, colWidth) {
+      colWidth = colWidth || (pageW - M * 2) / 2;
+      const usableColW = colWidth - 18;
+      for (let i = 0; i < rows.length; i += 2) {
+        const pair = [rows[i], rows[i + 1]];
+        // measure how tall this row needs to be (longest wrapped value of the two cells)
+        let rowH = 30;
+        pair.forEach(function (p) {
+          if (!p) return;
+          const lines = doc.splitTextToSize(clean(p[1]), usableColW);
+          rowH = Math.max(rowH, 15 + lines.length * 12 + 8);
+        });
+        y = ensureSpace(y, rowH);
+        pair.forEach(function (p, ci) {
+          if (!p) return;
+          const x = M + ci * colWidth;
+          doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+          doc.setTextColor(soft[0], soft[1], soft[2]);
+          doc.text(p[0].toUpperCase(), x, y);
+          doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+          doc.setTextColor(ink[0], ink[1], ink[2]);
+          doc.text(clean(p[1]), x, y + 15, { maxWidth: usableColW });
+        });
+        y += rowH;
+      }
+      return y + 6;
+    }
+
+    // Table with header row; each row's height grows to fit wrapped cell text.
+    function table(y, headers, rows, colWidths, opts) {
+      opts = opts || {};
+      const totalW = pageW - M * 2;
+      const widths = colWidths || headers.map(function () { return totalW / headers.length; });
+      const padX = 6, padTop = 14, lineH = 11;
+
+      function drawHeader() {
+        doc.setFillColor(brand[0], brand[1], brand[2]);
+        doc.rect(M, y, totalW, 22, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+        let hx = M;
+        headers.forEach(function (h, i) { doc.text(h, hx + padX, y + 14); hx += widths[i]; });
+        y += 22;
+      }
+
+      y = ensureSpace(y, 22 + 20);
+      drawHeader();
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.8);
+
+      rows.forEach(function (row, ri) {
+        // pre-wrap every cell and compute this row's real height
+        const wrapped = row.map(function (cell, i) {
+          return doc.splitTextToSize(String(cell == null ? "\u2014" : cell), widths[i] - padX * 2);
+        });
+        const maxLines = Math.max.apply(null, wrapped.map(function (w) { return w.length; }));
+        const rowH = Math.max(20, padTop + (maxLines - 1) * lineH + 8);
+
+        if (y + rowH > pageH - 60) {
+          y = newPage();
+          drawHeader();
+          doc.setFont("helvetica", "normal"); doc.setFontSize(8.8);
+        }
+
+        if (ri % 2 === 1) { doc.setFillColor(panel[0], panel[1], panel[2]); doc.rect(M, y, totalW, rowH, "F"); }
+        doc.setTextColor(ink[0], ink[1], ink[2]);
+        let x = M;
+        wrapped.forEach(function (lines, i) {
+          const align = opts.rightAlignFrom != null && i >= opts.rightAlignFrom ? "right" : "left";
+          const tx = align === "right" ? x + widths[i] - padX : x + padX;
+          doc.text(lines, tx, y + padTop, { align: align, maxWidth: widths[i] - padX * 2 });
+          x += widths[i];
+        });
+        doc.setDrawColor(line[0], line[1], line[2]);
+        doc.rect(M, y, totalW, rowH);
+        y += rowH;
+      });
+
+      return y + 14;
+    }
+
+    /* ---------------- COVER / HEADER ---------------- */
     doc.setFillColor(brand[0], brand[1], brand[2]);
-    doc.rect(0, 0, pageW, 90, "F");
+    doc.rect(0, 0, pageW, 128, "F");
+    doc.setFillColor(brand2[0], brand2[1], brand2[2]);
+    doc.rect(0, 120, pageW, 4, "F");
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold"); doc.setFontSize(18);
-    doc.text("RT Compensation \u2014 Khata Progress Report", 40, 40);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-    doc.text((khata.rtName || "Unnamed RT") + "   |   Khata " + (khata.khataNumber || "") + "   |   " + (block.blockName || ""), 40, 62);
-    doc.text(DATA.phaseDisplayName(phase), 40, 78);
+    doc.text("RT Compensation Management System", M, 36);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11.5);
+    doc.text("Khata Progress & Compensation Report", M, 56);
 
-    let y = 120;
-    doc.setTextColor(ink[0], ink[1], ink[2]);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text("Summary", 40, y); y += 8;
-    doc.setDrawColor(226, 232, 240); doc.line(40, y, pageW - 40, y); y += 20;
+    // RT name can be long — wrap it within the space left of the status chip,
+    // and push everything below it down by however many lines it needs.
+    const chipLabel = v.stageLabel.toUpperCase();
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    const chipW = doc.getTextWidth(chipLabel) + 22;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(pageW - M - chipW, 30, chipW, 20, 10, 10, "F");
+    doc.setTextColor(brand[0], brand[1], brand[2]);
+    doc.text(chipLabel, pageW - M - chipW / 2, 43.5, { align: "center" });
 
-    const clean = function (s) { return String(s).replace("&mdash;", "-"); };
-    const summaryRows = [
-      ["Acquired land", clean(fmtAcres(khata.land && khata.land.acquiredLandAcres))],
-      ["District / Village", ((khata.location && khata.location.district) || "-") + " / " + ((khata.location && khata.location.village) || "-")],
-      ["Documentation", PAGES.isDocComplete(pk.khataId) ? "Completed" : "Incomplete"],
-    ];
-    if (comp) summaryRows.push(["Total compensation", clean(fmtINR(comp.totalAmount))]);
+    const nameMaxWidth = pageW - M * 2 - chipW - 20;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13.5);
+    doc.setTextColor(255, 255, 255);
+    const nameLines = doc.splitTextToSize(khata.rtName || "Unnamed RT", pageW - M * 2);
+    doc.text(nameLines, M, 80);
+    const nameBlockH = (nameLines.length - 1) * 16;
 
-    doc.setFont("helvetica", "normal"); doc.setFontSize(10.5);
-    summaryRows.forEach(function (row) {
-      doc.setTextColor(soft[0], soft[1], soft[2]); doc.text(row[0] + ":", 40, y);
-      doc.setTextColor(ink[0], ink[1], ink[2]); doc.text(String(row[1]), 210, y);
-      y += 18;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    doc.text(
+      "Khata " + (khata.khataNumber || "") + "   |   " +
+      (v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (block.blockName || "")) +
+      "   |   " + DATA.phaseDisplayName(phase),
+      M, 98 + nameBlockH, { maxWidth: pageW - M * 2 }
+    );
+
+    let y = 148 + nameBlockH;
+
+    /* ---------------- RT & LOCATION DETAILS ---------------- */
+    y = sectionTitle(y, "RT & Location Details");
+    y = kvGrid(y, [
+      ["RT Name", khata.rtName], ["RT ID", khata.rtId],
+      ["Khata Number", khata.khataNumber], ["Block(s)", v.blockNames && v.blockNames.length ? v.blockNames.join(", ") : block.blockName],
+      ["Village", loc.village], ["District", loc.district],
+      ["Status", (khata.metadata || {}).status || "On record"], ["Documentation", PAGES.isDocComplete(pk.khataId) ? "Completed" : "Incomplete"],
+    ]);
+
+    /* ---------------- LAND SUMMARY ---------------- */
+    y = sectionTitle(y, "Land Summary");
+    y = kvGrid(y, [
+      ["Acquired Land", fmtAcres(v.combinedAcquiredLandAcres || land.acquiredLandAcres).replace("&mdash;", "\u2014")],
+      ["Land Category", land.landCategory],
+      ["Number of Plots", String(plots.length)],
+      ["Structures on Record", String(structures.length)],
+    ]);
+
+    /* ---------------- PLOTS ---------------- */
+    if (plots.length) {
+      y = sectionTitle(y, "Plot Details");
+      y = table(y, ["Plot No.", "Kissam", "Total Area", "Acquired Area"],
+        plots.map(function (p) { return [p.plotNo || "\u2014", p.kissam || "\u2014", clean(fmtAcres(p.totalAreaAcres)), clean(fmtAcres(p.acquiredAreaAcres))]; }),
+        [130, 150, 145, 145]);
+    }
+
+    /* ---------------- STRUCTURES ---------------- */
+    if (structures.length) {
+      y = sectionTitle(y, "Structures");
+      y = table(y, ["Type", "Usage", "Area", "Condition"],
+        structures.map(function (s) { return [s.type || "\u2014", s.usage || "\u2014", s.area || "\u2014", s.condition || "\u2014"]; }),
+        [160, 160, 120, 130]);
+    }
+
+    /* ---------------- TREES ---------------- */
+    if (trees.length) {
+      y = sectionTitle(y, "Tree Records");
+      y = table(y, ["Species", "Quantity", "Age", "Condition"],
+        trees.map(function (t) { return [t.species || "\u2014", t.quantity != null ? String(t.quantity) : "\u2014", t.age || "\u2014", t.condition || "\u2014"]; }),
+        [160, 120, 120, 170]);
+    }
+
+    /* ---------------- COMPENSATION BREAKDOWN ---------------- */
+    y = sectionTitle(y, "Compensation Breakdown");
+    if (comp) {
+      // Taller hero box, amount and status on separate lines so nothing overlaps.
+      y = ensureSpace(y, 74);
+      doc.setFillColor(money[0], money[1], money[2]);
+      doc.roundedRect(M, y, pageW - M * 2, 64, 8, 8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+      doc.text("TOTAL COMPENSATION", M + 16, y + 20);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+      doc.text(fmtRs(comp.totalAmount), M + 16, y + 44);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+      doc.text("Status: " + clean(comp.status), pageW - M - 16, y + 44, { align: "right" });
+      y += 80;
+      y = table(y, ["Component", "Amount"], [
+        ["Land Amount", fmtRs(comp.landAmount)],
+        ["Structure Amount", fmtRs(comp.structureAmount)],
+        ["Tree Amount", fmtRs(comp.treeAmount)],
+        ["Ex-gratia (DLC)", fmtRs(comp.exGratia)],
+        ["Last Updated", fmtDMY(comp.lastUpdated)],
+      ], [pageW - M * 2 - 200, 200], { rightAlignFrom: 1 });
+    } else {
+      y = ensureSpace(y, 30);
+      doc.setFont("helvetica", "italic"); doc.setFontSize(10);
+      doc.setTextColor(mute[0], mute[1], mute[2]);
+      doc.text("No compensation record has been entered for this khata yet.", M, y);
+      y += 26;
+    }
+
+    /* ---------------- DOCUMENT STATUS ---------------- */
+    y = sectionTitle(y, "Document Status");
+    const uploadedTypes = {};
+    docs.forEach(function (d) { uploadedTypes[d.documentType] = (uploadedTypes[d.documentType] || 0) + 1; });
+    // jsPDF's standard font can't render the ₹ glyph (used in "₹20/- Bond Paper")
+    // — swap it for "Rs." here too, same fix as the compensation amounts.
+    const docRows = DOC_TYPES.map(function (t) {
+      const count = uploadedTypes[t] || 0;
+      const label = t.replace(/\u20B9/g, "Rs. ");
+      return [label, count ? "Uploaded (" + count + ")" : "Not uploaded"];
     });
+    y = table(y, ["Document Type", "Status"], docRows, [pageW - M * 2 - 130, 130]);
 
-    y += 24;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.setTextColor(ink[0], ink[1], ink[2]);
-    doc.text("Progress Timeline", 40, y); y += 8;
-    doc.setDrawColor(226, 232, 240); doc.line(40, y, pageW - 40, y); y += 46;
+    /* ---------------- VERIFICATION REMARKS (shown when docs were
+       incomplete/missing but verification was still done — makes the
+       exception impossible to miss on the printed report) ---------------- */
+    if (pk.documentsVerifiedRemarks) {
+      const amber = [180, 83, 9], amberBg = [255, 251, 235], amberBorder = [253, 230, 138];
+      const remarkLines = doc.splitTextToSize(String(pk.documentsVerifiedRemarks), pageW - M * 2 - 24);
+      const remarkH = 34 + remarkLines.length * 12;
+      y = ensureSpace(y, remarkH + 16);
+      doc.setFillColor(amberBg[0], amberBg[1], amberBg[2]);
+      doc.setDrawColor(amberBorder[0], amberBorder[1], amberBorder[2]);
+      doc.setLineWidth(1);
+      doc.roundedRect(M, y, pageW - M * 2, remarkH, 6, 6, "FD");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.setTextColor(amber[0], amber[1], amber[2]);
+      doc.text("\u26A0 Verification Remarks (documents incomplete)", M + 12, y + 20);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+      doc.setTextColor(ink[0], ink[1], ink[2]);
+      doc.text(remarkLines, M + 12, y + 36);
+      y += remarkH + 16;
+    }
 
+    /* ---------------- PROGRESS TIMELINE ---------------- */
+    y = sectionTitle(y, "Progress Timeline");
+    y = ensureSpace(y, 90);
     const stages = [
       { label: "Enlisted", date: pk.enlistedAt, done: true },
       { label: "Notice Served", date: pk.noticeServedAt, done: v.noticeServed },
       { label: "Documents Verified", date: pk.documentsVerifiedAt, done: v.documentsVerified },
       { label: "Compensation Received", date: pk.compensationReceivedAt, done: v.compensationReceived },
     ];
-
-    const marginX = 65, usableW = pageW - marginX * 2, stepW = usableW / (stages.length - 1), cy = y;
-
+    const marginX = M + 25, usableW = pageW - marginX * 2 - M + 15, stepW = usableW / (stages.length - 1), cy = y + 20;
     doc.setLineWidth(2.5); doc.setDrawColor(money[0], money[1], money[2]);
     doc.line(marginX, cy, marginX + usableW, cy);
-
     stages.forEach(function (s, i) {
       const cx = marginX + stepW * i;
       doc.setFillColor.apply(doc, s.done ? money : mute);
       doc.circle(cx, cy, 9, "F");
       doc.setFillColor(255, 255, 255);
       doc.circle(cx, cy, 3.5, "F");
-
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
       doc.setTextColor(ink[0], ink[1], ink[2]);
-      doc.text(s.label, cx, cy - 22, { align: "center", maxWidth: stepW - 8 });
-
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      doc.text(s.label, cx, cy - 22, { align: "center", maxWidth: stepW - 6 });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.setTextColor(soft[0], soft[1], soft[2]);
       doc.text(s.date ? fmtDMY(s.date) : "Pending", cx, cy + 26, { align: "center" });
     });
+    y = cy + 50;
 
-    y = cy + 60;
-
+    /* ---------------- ESCALATION ---------------- */
     if (pk.escalation && pk.escalation.remarks) {
-      y += 20;
+      const escLines = doc.splitTextToSize(String(pk.escalation.remarks), pageW - M * 2 - 24);
+      const escH = 34 + escLines.length * 12;
+      y = ensureSpace(y, escH + 10);
       doc.setFillColor(255, 241, 242);
-      doc.roundedRect(40, y, pageW - 80, 55, 6, 6, "F");
+      doc.roundedRect(M, y, pageW - M * 2, escH, 6, 6, "F");
       doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-      doc.setTextColor(190, 18, 60);
-      doc.text("Escalation remark:", 50, y + 18);
+      doc.setTextColor(rose[0], rose[1], rose[2]);
+      doc.text("Escalation Remark", M + 12, y + 20);
       doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
       doc.setTextColor(ink[0], ink[1], ink[2]);
-      doc.text(String(pk.escalation.remarks), 50, y + 34, { maxWidth: pageW - 100 });
-      y += 70;
+      doc.text(escLines, M + 12, y + 36);
+      y += escH + 16;
     }
 
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-    doc.setTextColor(mute[0], mute[1], mute[2]);
-    doc.text("Generated on " + fmtDMY(Date.now()) + "   \u00b7   RT Compensation Management System", 40, pageH - 30);
+    /* ---------------- finalize footers with correct page count ---------------- */
+    footer();
+    if (typeof doc.putTotalPages === "function") doc.putTotalPages(totalPagesExp);
 
     const safeName = ((khata.khataNumber || "khata") + "_" + (khata.rtName || "")).replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
     doc.save(safeName + "_Report.pdf");
