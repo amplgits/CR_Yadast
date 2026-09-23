@@ -1484,7 +1484,20 @@ const DATA = {
   pkView: function (pk) {
     const khata = STATE.khatas[pk.khataId] || {};
     const block = STATE.blocks[khata.blockId] || {};
-    const docsCollected = PAGES.isDocComplete(pk.khataId);
+
+    // A khataNumber can span more than one block (same RT, land in two coal
+    // blocks). pk.khataIds (if present) lists every underlying block-record
+    // this enlistment covers; older entries without it fall back to just
+    // the one khataId, so this stays backward compatible.
+    const groupIds = Array.isArray(pk.khataIds) && pk.khataIds.length ? pk.khataIds : [pk.khataId];
+    const groupKhatas = groupIds.map(function (id) { return STATE.khatas[id]; }).filter(Boolean);
+    const groupBlocks = groupKhatas.map(function (k) { return STATE.blocks[k.blockId]; }).filter(Boolean);
+    const blockNames = Array.from(new Set(groupBlocks.map(function (b) { return b.blockName; }).filter(Boolean)));
+    const isCombined = groupIds.length > 1;
+
+    const combinedAcquiredLandAcres = groupKhatas.reduce(function (sum, k) { return sum + (Number((k.land || {}).acquiredLandAcres) || 0); }, 0);
+    const combinedCompensation = groupIds.reduce(function (sum, id) { const c = STATE.compensation[id]; return sum + (c ? Number(c.totalAmount || 0) : 0); }, 0);
+    const docsCollected = groupIds.some(function (id) { return PAGES.isDocComplete(id); });
     const noticeServed = !!pk.noticeServed;
     const documentsVerified = !!pk.documentsVerified;
     const compensationReceived = !!pk.compensationReceived;
@@ -1501,6 +1514,8 @@ const DATA = {
     return {
       id: pk.id, phaseId: pk.phaseId, pk: pk,
       khata: khata, block: block,
+      isCombined: isCombined, groupIds: groupIds, blockNames: blockNames,
+      combinedAcquiredLandAcres: combinedAcquiredLandAcres, combinedCompensation: combinedCompensation,
       docsCollected: docsCollected, noticeServed: noticeServed,
       documentsVerified: documentsVerified, compensationReceived: compensationReceived,
       stageIndex: stageIndex, stageLabel: stageLabels[stageIndex],
@@ -2351,7 +2366,7 @@ PAGES.pkCardHtml = function (v) {
   }).join('<div class="stage-line"></div>');
 
   return '<div class="entity-card" data-pk-open="' + v.id + '"><div class="eyebrow">KHATA ' + escapeHtml(v.khata.khataNumber || "") + '</div><h3>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h3>' +
-    '<div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(v.block.blockName || "&mdash;") + '</span></div>' +
+    '<div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "&mdash;")) + '</span><span><i class="icon-ruler i"></i>' + fmtAcres(v.combinedAcquiredLandAcres) + '</span></div>' +
     '<div class="stage-track mt-8">' + stepsHtml + '</div>' +
     (v.hasEscalation
       ? '<div class="badge-row mt-8"><span class="badge badge-rose"><i class="icon-triangle-alert i"></i>Escalated</span></div>'
@@ -2477,7 +2492,24 @@ const EnlistModal = {
 
   availableKhatas: function () {
     const enlisted = DATA.enlistedKhataIdsForPhase(EnlistModal.phaseId);
-    return DATA.khataList().filter(function (k) { return !enlisted[k.id]; });
+    const byNumber = {};
+    DATA.khataList().forEach(function (k) {
+      const num = String(k.khataNumber || "").trim();
+      if (!num) return;
+      if (!byNumber[num]) byNumber[num] = [];
+      byNumber[num].push(k);
+    });
+    const groups = [];
+    Object.keys(byNumber).forEach(function (num) {
+      const members = byNumber[num];
+      if (members.some(function (k) { return enlisted[k.id]; })) return; // whole group already enlisted
+      const rep = Object.assign({}, members[0]);
+      rep.groupBlockNames = Array.from(new Set(members.map(function (k) {
+        return (STATE.blocks[k.blockId] || {}).blockName;
+      }).filter(Boolean)));
+      groups.push(rep);
+    });
+    return groups;
   },
 
   renderList: function (q) {
@@ -2501,7 +2533,7 @@ const EnlistModal = {
       return;
     }
     host.innerHTML = list.map(function (k) {
-      const blockName = (STATE.blocks[k.blockId] || {}).blockName || "";
+      const blockName = k.groupBlockNames && k.groupBlockNames.length ? k.groupBlockNames.join(" + ") : ((STATE.blocks[k.blockId] || {}).blockName || "");
       const checked = EnlistModal.selected[k.id] ? " checked" : "";
       return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;">' +
         '<input type="checkbox" data-ek-id="' + k.id + '"' + checked + ' style="width:17px;height:17px;flex-shrink:0;">' +
@@ -2669,7 +2701,7 @@ const PKModal = {
 
     let html = '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
       '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
-      '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.block.blockName || "") + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
+      '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "")) + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
 
        PKModal.noticeSectionHtml(noticeList) +
 
