@@ -3853,7 +3853,7 @@ const ZIPDOWNLOAD = {
    BULK IMPORT
    ============================================================ */
 const IMPORT = {
-  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedPlotRows: [], parsedUpdateRows: [],
+  parsedRows: [], parsedStructureRows: [], parsedTreeRows: [], parsedPlotRows: [], parsedUpdateRows: [], parsedMoveRows: [],
   REQUIRED_COLUMNS: ["blockName", "khataNumber", "rtName"],
   TEMPLATE_COLUMNS: ["blockName", "blockCode", "village", "district", "khataNumber", "rtName", "acquiredLandAcres", "landCategory", "landAmount", "structureAmount", "treeAmount", "exGratia", "status"],
   STRUCTURE_COLUMNS: ["blockName", "khataNumber", "type", "area", "condition", "usage", "remarks"],
@@ -3878,7 +3878,7 @@ const IMPORT = {
     reader.onload = function (e) {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
-        const RESERVED_SHEETS = ["Structures", "Trees", "Plots", "UpdateKhatas"];
+        const RESERVED_SHEETS = ["Structures", "Trees", "Plots", "UpdateKhatas", "MoveKhataBlock"];
         const firstSheetName = wb.SheetNames[0];
         const kSheet = wb.Sheets["Khatas"] || (RESERVED_SHEETS.indexOf(firstSheetName) === -1 ? wb.Sheets[firstSheetName] : null);
         const rows = kSheet ? XLSX.utils.sheet_to_json(kSheet, { defval: "" }) : [];
@@ -3890,7 +3890,9 @@ const IMPORT = {
         const plotRows = pSheet ? XLSX.utils.sheet_to_json(pSheet, { defval: "" }) : [];
         const uSheet = wb.Sheets["UpdateKhatas"];
         const updateRows = uSheet ? XLSX.utils.sheet_to_json(uSheet, { defval: "" }) : [];
-        IMPORT.validateAndPreview(rows, structureRows, treeRows, plotRows, updateRows);
+        const mSheet = wb.Sheets["MoveKhataBlock"];
+        const moveRows = mSheet ? XLSX.utils.sheet_to_json(mSheet, { defval: "" }) : [];
+        IMPORT.validateAndPreview(rows, structureRows, treeRows, plotRows, updateRows, moveRows);
       } catch (err) {
         showToast("Could not read that file - is it a valid .xlsx?", "error");
       }
@@ -3898,14 +3900,15 @@ const IMPORT = {
     reader.readAsArrayBuffer(file);
   },
 
-  validateAndPreview: function (rows, structureRows, treeRows, plotRows, updateRows) {
+  validateAndPreview: function (rows, structureRows, treeRows, plotRows, updateRows, moveRows) {
     updateRows = updateRows || [];
     plotRows = plotRows || [];
+    moveRows = moveRows || [];
     const missingCols = IMPORT.REQUIRED_COLUMNS.filter(function (c) { return rows.length && !(c in rows[0]); });
     const host = $("#importPreview");
     if (rows.length && missingCols.length) {
       host.innerHTML = emptyState("icon-triangle-alert", "Missing columns", "Required in Khatas sheet: " + missingCols.join(", ") + ".");
-      IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedUpdateRows = [];
+      IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedUpdateRows = []; IMPORT.parsedMoveRows = [];
       return;
     }
     const validRows = rows.filter(function (r) { return r.khataNumber && r.rtName && r.blockName; });
@@ -3913,10 +3916,12 @@ const IMPORT = {
     const validTrees = treeRows.filter(function (r) { return r.blockName && r.khataNumber; });
     const validPlots = plotRows.filter(function (r) { return r.blockName && r.khataNumber; });
     const validUpdates = updateRows.filter(function (r) { return r.blockName && r.khataNumber; });
+    const validMoves = moveRows.filter(function (r) { return r.khataId && r.newBlockName; });
     IMPORT.parsedRows = validRows; IMPORT.parsedStructureRows = validStructures;
-    IMPORT.parsedTreeRows = validTrees; IMPORT.parsedPlotRows = validPlots; IMPORT.parsedUpdateRows = validUpdates;
+    IMPORT.parsedTreeRows = validTrees; IMPORT.parsedPlotRows = validPlots;
+    IMPORT.parsedUpdateRows = validUpdates; IMPORT.parsedMoveRows = validMoves;
 
-    if (!validRows.length && !validStructures.length && !validTrees.length && !validPlots.length && !validUpdates.length) {
+    if (!validRows.length && !validStructures.length && !validTrees.length && !validPlots.length && !validUpdates.length && !validMoves.length) {
       host.innerHTML = emptyState("icon-triangle-alert", "Nothing to import", "No valid rows found in any sheet.");
       return;
     }
@@ -3925,13 +3930,14 @@ const IMPORT = {
       '<div class="badge badge-brand">' + validStructures.length + ' structure row(s)</div> ' +
       '<div class="badge badge-brand">' + validTrees.length + ' tree row(s)</div> ' +
       '<div class="badge badge-brand">' + validPlots.length + ' plot row(s)</div> ' +
-      '<div class="badge badge-brand">' + validUpdates.length + ' field-update row(s)</div>' +
+      '<div class="badge badge-brand">' + validUpdates.length + ' field-update row(s)</div> ' +
+      '<div class="badge badge-brand">' + validMoves.length + ' block-move row(s)</div>' +
       '<button class="btn btn-primary btn-sm mt-16" id="btnConfirmImport"><i class="icon-upload i"></i>Import</button>';
     $("#btnConfirmImport").addEventListener("click", IMPORT.submit);
   },
 
     submit: function () {
-    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedPlotRows.length && !IMPORT.parsedUpdateRows.length) return;
+    if (!IMPORT.parsedRows.length && !IMPORT.parsedStructureRows.length && !IMPORT.parsedTreeRows.length && !IMPORT.parsedPlotRows.length && !IMPORT.parsedUpdateRows.length && !IMPORT.parsedMoveRows.length) return;
     const btn = $("#btnConfirmImport");
     btn.disabled = true; btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Importing&hellip;</span>';
     const p1 = (IMPORT.parsedRows.length || IMPORT.parsedStructureRows.length || IMPORT.parsedTreeRows.length || IMPORT.parsedPlotRows.length)
@@ -3942,10 +3948,15 @@ const IMPORT = {
         ? API.post("updateKhataFields", { token: STATE.token, rows: IMPORT.parsedUpdateRows })
         : Promise.resolve({ matched: 0 });
       return p2.then(function (updData) {
-        showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + data.plotsAdded + " plot(s), " + updData.matched + " field update(s) done.", "success");
-        $("#importPreview").innerHTML = "";
-        IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedPlotRows = []; IMPORT.parsedUpdateRows = [];
-        return DATA.loadBootstrap();
+        const p3 = IMPORT.parsedMoveRows.length
+          ? API.post("moveKhataBlock", { token: STATE.token, rows: IMPORT.parsedMoveRows })
+          : Promise.resolve({ moved: 0 });
+        return p3.then(function (moveData) {
+          showToast(data.khatasCreated + " khata(s), " + data.structuresAdded + " structure(s), " + data.treesAdded + " tree(s), " + data.plotsAdded + " plot(s), " + updData.matched + " field update(s), " + moveData.moved + " block move(s) done.", "success");
+          $("#importPreview").innerHTML = "";
+          IMPORT.parsedRows = []; IMPORT.parsedStructureRows = []; IMPORT.parsedTreeRows = []; IMPORT.parsedPlotRows = []; IMPORT.parsedUpdateRows = []; IMPORT.parsedMoveRows = [];
+          return DATA.loadBootstrap();
+        });
       });
     })
       .then(function () { Router.render(); })
