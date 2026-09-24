@@ -1294,6 +1294,7 @@ const AUTH = {
   },
 
   logout: function () {
+    SYNC.stop();
     const token = STATE.token;
     STATE.token = null; STATE.role = null; STATE.userName = null; STATE.userId = null;
     STATE.isAuthed = false; STATE.compensation = {}; STATE.users = {};
@@ -1315,6 +1316,7 @@ const DATA = {
       STATE.phases = data.phases || {};
       STATE.phaseKhatas = data.phaseKhatas || {};
       STATE.stats = data.stats || {};
+      SYNC.lastSeen = data.version || null;
       STATE.loaded = true;
       SEARCH.rebuildIndex();
     });
@@ -1335,6 +1337,8 @@ const DATA = {
           STATE.phases = data.phases || {};
           STATE.phaseKhatas = data.phaseKhatas || {};
           STATE.stats = data.stats || {};
+          SYNC.lastSeen = data.version || SYNC.lastSeen;
+          SYNC.pending = false;
           SEARCH.rebuildIndex();
           Router.render();
         }).catch(function () {}).finally(function () {
@@ -1587,6 +1591,106 @@ const DATA = {
     });
   },
 };
+
+/* ============================================================
+   AUTO SYNC - polls a tiny version stamp; downloads fresh data
+   only when something changed, and never while the user is
+   typing or has a popup open. Also reloads the document list
+   of the khata currently open.
+   ============================================================ */
+const SYNC = {
+  POLL_MS: 45000,
+  MIN_GAP_MS: 30000,
+  timer: null,
+  lastSeen: null,
+  latest: null,
+  pending: false,
+  needRender: false,
+  busyChecking: false,
+  refreshing: false,
+  lastRefresh: 0,
+
+  start: function () {
+    SYNC.stop();
+    SYNC.timer = setInterval(SYNC.tick, SYNC.POLL_MS);
+    document.addEventListener("visibilitychange", SYNC.onVisible);
+  },
+  stop: function () {
+    clearInterval(SYNC.timer); SYNC.timer = null;
+    document.removeEventListener("visibilitychange", SYNC.onVisible);
+    SYNC.lastSeen = null; SYNC.pending = false; SYNC.needRender = false;
+  },
+  onVisible: function () { if (!document.hidden) SYNC.tick(); },
+
+  isBusy: function () {
+    if (document.querySelector(".modal-backdrop.open, #lightbox.open, #uploadSuccessOverlay.show")) return true;
+    const a = document.activeElement;
+    return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+  },
+
+  tick: function () {
+    if (document.hidden || !STATE.isAuthed || !STATE.loaded || SYNC.busyChecking || SYNC.refreshing) return;
+
+    // Data was already downloaded while the user was busy - just paint it now.
+    if (SYNC.needRender && !SYNC.isBusy()) { SYNC.needRender = false; SYNC.softRender(); }
+
+    const maybeRefresh = function () {
+      if (SYNC.pending && !SYNC.isBusy() && Date.now() - SYNC.lastRefresh >= SYNC.MIN_GAP_MS) SYNC.refresh();
+    };
+
+    if (SYNC.pending) { maybeRefresh(); return; }
+
+    SYNC.busyChecking = true;
+    API.get("version", { token: STATE.token }).then(function (d) {
+      if (SYNC.lastSeen === null) { SYNC.lastSeen = d.v; return; }
+      if (d.v !== SYNC.lastSeen) { SYNC.pending = true; SYNC.latest = d.v; maybeRefresh(); }
+    }).catch(function (err) {
+      if (err && err.code === "UNAUTHORIZED") Router.forceLogout();
+    }).finally(function () { SYNC.busyChecking = false; });
+  },
+
+  refresh: function () {
+    SYNC.refreshing = true;
+    API.get("bootstrap", { token: STATE.token }).then(function (data) {
+      STATE.blocks = data.blocks || {};
+      STATE.khatas = data.khatas || {};
+      STATE.documents = data.documents || {};
+      STATE.phases = data.phases || {};
+      STATE.phaseKhatas = data.phaseKhatas || {};
+      STATE.stats = data.stats || {};
+      SYNC.lastSeen = data.version || SYNC.latest;
+      SEARCH.rebuildIndex();
+      return DATA.loadCompensationIfAllowed();
+    }).then(function () {
+      // If a khata's Documents list is open, re-fetch just that khata's list.
+      const r = STATE.currentRoute;
+      if (r && r.name === "khataDetail" && r.params && r.params.id && DATA.isKhataDocumentsLoaded(r.params.id)) {
+        return DATA.loadDocumentsForKhata(r.params.id, true).catch(function () {});
+      }
+    }).then(function () {
+      SYNC.pending = false;
+      SYNC.lastRefresh = Date.now();
+      SYNC.softRender();
+    }).catch(function () {}).finally(function () { SYNC.refreshing = false; });
+  },
+
+  /* Re-render without losing the user's place. If busy, remember to paint later. */
+  softRender: function () {
+    const name = STATE.currentRoute && STATE.currentRoute.name;
+    if (name === "documents") return; // paginated list - don't reset it
+    if (SYNC.isBusy()) { SYNC.needRender = true; return; }
+    const scrollY = window.scrollY;
+    const activeTabBtn = document.querySelector(".tab-btn.active[data-tab]");
+    const activeTab = activeTabBtn && activeTabBtn.getAttribute("data-tab");
+    Router.render();
+    if (name === "khataDetail" && activeTab && activeTab !== "overview") {
+      const b = document.querySelector('.tab-btn[data-tab="' + activeTab + '"]');
+      if (b) b.click();
+    }
+    window.scrollTo(0, scrollY);
+  },
+};
+
 
 /* ============================================================
    SEARCH
@@ -5543,7 +5647,7 @@ function boot2() {
 
   DATA.loadBootstrap()
     .then(function () { return DATA.loadCompensationIfAllowed(); })
-    .then(function () { Router.render(); })
+    .then(function () { Router.render(); SYNC.start(); })
     .catch(function (err) {
       console.error(err);
       if (err.code === "UNAUTHORIZED") { Router.forceLogout(); return; }
