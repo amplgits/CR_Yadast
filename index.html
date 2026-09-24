@@ -1026,6 +1026,21 @@ function fmtDMY(ts) {
   return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear();
 }
 
+/* Date + time in Indian Standard Time (IST, UTC+5:30), regardless of the
+   viewer's device timezone. Example: "24 Sept 2026, 03:45 PM" */
+function fmtDateTimeIST(ts) {
+  if (!ts) return "&mdash;";
+  return new Date(ts).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).replace(/\b(am|pm)\b/i, function (m) { return m.toUpperCase(); });
+}
+
 function yesterdayISO() {
   const d = new Date(Date.now() - 86400000);
   const pad = function (n) { return String(n).padStart(2, "0"); };
@@ -1305,17 +1320,29 @@ const DATA = {
     });
   },
 
+  _refreshTimer: null,
+  _refreshInFlight: false,
   refreshQuietly: function () {
-    return API.get("bootstrap", { token: STATE.token }).then(function (data) {
-      STATE.blocks = data.blocks || {};
-      STATE.khatas = data.khatas || {};
-      STATE.documents = data.documents || {};
-      STATE.phases = data.phases || {};
-      STATE.phaseKhatas = data.phaseKhatas || {};
-      STATE.stats = data.stats || {};
-      SEARCH.rebuildIndex();
-      Router.render();
-    }).catch(function () {});
+    clearTimeout(DATA._refreshTimer);
+    return new Promise(function (resolve) {
+      DATA._refreshTimer = setTimeout(function () {
+        if (DATA._refreshInFlight) { resolve(); return; }
+        DATA._refreshInFlight = true;
+        API.get("bootstrap", { token: STATE.token }).then(function (data) {
+          STATE.blocks = data.blocks || {};
+          STATE.khatas = data.khatas || {};
+          STATE.documents = data.documents || {};
+          STATE.phases = data.phases || {};
+          STATE.phaseKhatas = data.phaseKhatas || {};
+          STATE.stats = data.stats || {};
+          SEARCH.rebuildIndex();
+          Router.render();
+        }).catch(function () {}).finally(function () {
+          DATA._refreshInFlight = false;
+          resolve();
+        });
+      }, 2000);
+    });
   },
 
   loadCompensationIfAllowed: function () {
@@ -5276,7 +5303,7 @@ PAGES.afterAdminAudit = function () {
     if (!host) return;
     if (!entries.length) { host.innerHTML = emptyState("icon-history", "No activity yet", "Administrative actions will be logged here."); return; }
     host.innerHTML = entries.map(function (e) {
-      return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(e.action) + " &middot; " + escapeHtml(e.adminId || "") + '</div><div class="details">' + escapeHtml(e.description || "") + '</div></div><span class="badge badge-slate">' + fmtDate(e.timestamp) + "</span></div>";
+      return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(e.action) + " &middot; " + escapeHtml(e.adminId || "") + '</div><div class="details">' + escapeHtml(e.description || "") + '</div></div><span class="badge badge-slate" style="white-space:nowrap;">' + fmtDateTimeIST(e.timestamp) + "</span></div>";
     }).join("");
   }).catch(function () {
     const host = $("#auditLogHost");
