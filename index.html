@@ -535,6 +535,12 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .login-card h2{text-align:center;font-size:19px;}
 .login-card .modal-sub{text-align:center;margin-top:4px;}
 .disabled-note{background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--ink-soft);margin-bottom:14px;}
+.login-error{
+  display:none;background:#FFF1F2;color:var(--rose-1);border:1px solid #FECDD3;
+  border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;
+  margin-bottom:14px;align-items:center;gap:8px;
+}
+.login-error.show{display:flex;animation:cardIn .2s ease;}
 
 /* Utility */
 .flex{display:flex;} .items-center{align-items:center;} .justify-between{justify-content:space-between;}
@@ -592,6 +598,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
       </button>
     </div>
+    <div class="login-error" id="glError" role="alert"></div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" id="btnGateLogin">
       <i class="icon-log-in i"></i><span>Sign in</span>
     </button>
@@ -856,6 +863,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
 <script>
 /* ============================================================
@@ -2010,7 +2018,7 @@ PAGES.plotDetail = function (key) {
     '<div class="card"><div class="section-title">Khatas holding this plot <span class="muted">' + entries.length + ' record(s)</span></div>' +
     entries.map(function (e) {
       const blockName = (STATE.blocks[e.khata.blockId] || {}).blockName || "";
-      return '<div class="sub-item-card" data-nav="#/khata/' + e.khataId + '/plots" style="cursor:pointer;">' +
+      return '<div class="sub-item-card" data-nav="#/khata/' + e.khataId + '/land" style="cursor:pointer;">' +
         '<div><div class="name">Khata ' + escapeHtml(e.khata.khataNumber || "") + ' &middot; ' + escapeHtml(e.khata.rtName || "Unnamed RT") + '</div>' +
         '<div class="details">Kissam: ' + escapeHtml(e.plot.kissam || "\u2014") +
         ' &middot; Total: ' + fmtAcres(e.plot.totalAreaAcres) +
@@ -2244,7 +2252,10 @@ PAGES.phasesList = function () {
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Phases</div>' +
     '<div class="page-head"><div><h1>Compensation Phases</h1><p>Track notice serving, document collection, verification and payment, phase by phase.</p></div>' +
-    (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button>' : '') + '</div>' +
+    '<div class="flex gap-8" style="flex-wrap:wrap;">' +
+    (phases.length ? '<button class="btn btn-primary btn-sm" id="btnPhaseExcelReport" style="background:var(--money-grad);"><i class="icon-file-spreadsheet i"></i>Generate Report through Excel</button>' : '') +
+    (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button>' : '') +
+    '</div></div>' +
     (phases.length
       ? '<div class="grid-cards">' + phases.map(PAGES.phaseCardHtml).join("") + "</div>"
       : emptyState("icon-flag", "No phases yet", CAN.fullControl() ? "Create Phase-1 to begin enlisting Khatas for notice and document collection." : "No phases have been created yet.",
@@ -2282,6 +2293,9 @@ PAGES.afterPhasesList = function () {
   const btn = $("#btnCreatePhase"), btnEmpty = $("#btnCreatePhaseEmpty");
   if (btn) btn.addEventListener("click", PhaseModal.openCreate);
   if (btnEmpty) btnEmpty.addEventListener("click", PhaseModal.openCreate);
+  const xlBtn = $("#btnPhaseExcelReport");
+  if (xlBtn) xlBtn.addEventListener("click", function () { XLREPORT.generate(xlBtn); });
+
 
   $all("[data-rename-phase]").forEach(function (el) {
     el.addEventListener("click", function (e) {
@@ -3284,7 +3298,11 @@ const ReportPDF = {
     y = sectionTitle(y, "Land Summary");
     y = kvGrid(y, [
       ["Acquired Land", fmtAcres(v.combinedAcquiredLandAcres || land.acquiredLandAcres).replace("&mdash;", "\u2014")],
-      ["Land Category", land.landCategory],
+      ["Land Categories", (function () {
+        const s = [];
+        plots.forEach(function (p) { if (p.kissam && s.indexOf(p.kissam) === -1) s.push(p.kissam); });
+        return s.join(", ");
+      })()],
       ["Number of Plots", String(plots.length)],
       ["Structures on Record", String(structures.length)],
     ]);
@@ -3429,6 +3447,567 @@ const ReportPDF = {
   },
 };
 
+/* ============================================================
+   EXCEL REPORT - one workbook, one sheet per phase (ExcelJS)
+   ============================================================ */
+const XLREPORT = {
+  INCLUDE_SUMMARY_SHEET: true, // set to false if you want ONLY the phase sheets
+
+  INR_FMT: '[>=10000000]"\u20B9"##\\,##\\,##\\,##0;[>=100000]"\u20B9"##\\,##\\,##0;"\u20B9"##,##0',
+
+  COLORS: {
+    navy: "FF1E1B4B", brand: "FF4338CA", ink: "FF0F172A", soft: "FF475569", mute: "FF94A3B8",
+    line: "FFE2E8F0", zebra: "FFF8FAFC", white: "FFFFFFFF",
+    green: "FF047857", greenBg: "FFD1FAE5", rose: "FFBE123C", roseBg: "FFFFE4E6",
+    amber: "FFB45309", amberBg: "FFFEF3C7", blue: "FF1D4ED8", blueBg: "FFDBEAFE",
+    purple: "FF6D28D9", purpleBg: "FFEDE9FE", grayBg: "FFF1F5F9",
+  },
+
+  GROUP_COLORS: {
+    "RT & KHATA DETAILS": "FF4338CA", "LAND DETAILS": "FF0E7490", "NOTICES": "FF7C3AED",
+    "DOCUMENTATION": "FFB45309", "VERIFICATION & PAYMENT": "FF047857",
+    "COMPENSATION (\u20B9)": "FF065F46", "STATUS & FOLLOW-UP": "FFBE123C",
+  },
+
+  STAGE_STYLE: {
+    "Enlisted": ["FFF1F5F9", "FF475569"],
+    "In Progress": ["FFFEF3C7", "FFB45309"],
+    "Ready for Verification": ["FFDBEAFE", "FF1D4ED8"],
+    "Documents Verified": ["FFEDE9FE", "FF6D28D9"],
+    "Compensation Received": ["FFD1FAE5", "FF047857"],
+  },
+
+  fill: function (argb) { return { type: "pattern", pattern: "solid", fgColor: { argb: argb } }; },
+  border: function () {
+    const s = { style: "thin", color: { argb: XLREPORT.COLORS.line } };
+    return { top: s, left: s, bottom: s, right: s };
+  },
+  colLetter: function (n) {
+    let s = "";
+    while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  },
+  dmyToDate: function (s) {
+    const p = String(s || "").split("-");
+    if (p.length !== 3) return null;
+    const d = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+    return isNaN(d.getTime()) ? null : d;
+  },
+  safeSheetName: function (name, used) {
+    const base = String(name || "Phase").replace(/[\\\/\?\*\[\]:]/g, "-").trim().slice(0, 31) || "Phase";
+    let out = base, n = 2;
+    while (used[out.toLowerCase()]) {
+      const suffix = " (" + n + ")";
+      out = base.slice(0, 31 - suffix.length) + suffix; n++;
+    }
+    used[out.toLowerCase()] = true;
+    return out;
+  },
+
+  /* ---------- column definitions for a phase sheet ---------- */
+  columns: function (showComp) {
+    const G1 = "RT & KHATA DETAILS", G2 = "LAND DETAILS", G3 = "NOTICES", G4 = "DOCUMENTATION",
+          G5 = "VERIFICATION & PAYMENT", G6 = "COMPENSATION (\u20B9)", G7 = "STATUS & FOLLOW-UP";
+    const cols = [
+      { key: "sno", h: "S.No.", w: 6, g: G1, t: "int", c: true },
+      { key: "khata", h: "Khata No.", w: 12, g: G1, t: "text", c: true, bold: true },
+      { key: "rt", h: "RT Name", w: 28, g: G1, t: "text", bold: true },
+      { key: "rtId", h: "RT ID", w: 15, g: G1, t: "text", c: true },
+      { key: "block", h: "Block(s)", w: 24, g: G1, t: "text" },
+      { key: "village", h: "Village", w: 16, g: G1, t: "text" },
+      { key: "plots", h: "No. of Plots", w: 10, g: G2, t: "int", c: true, sum: true },
+      { key: "kissams", h: "Land Categories (Kissam)", w: 26, g: G2, t: "text" },
+      { key: "plotArea", h: "Total Plot Area (Acre)", w: 13, g: G2, t: "acre", sum: true },
+      { key: "acquired", h: "Acquired Land (Acre)", w: 13, g: G2, t: "acre", sum: true },
+      { key: "structures", h: "Structures", w: 11, g: G2, t: "int", c: true, sum: true },
+      { key: "trees", h: "Tree Records", w: 11, g: G2, t: "int", c: true, sum: true },
+      { key: "nLand", h: "Land Notice Date", w: 15, g: G3, t: "text", c: true },
+      { key: "nStructure", h: "Structure Notice Date", w: 15, g: G3, t: "text", c: true },
+      { key: "nTree", h: "Tree Notice Date", w: 15, g: G3, t: "text", c: true },
+      { key: "nBlock", h: "Block Notice Date", w: 15, g: G3, t: "text", c: true },
+      { key: "noticeServed", h: "Notice Served", w: 11, g: G3, t: "yn", c: true, count: true },
+      { key: "noticeOn", h: "Notice Served On", w: 13, g: G3, t: "date", c: true },
+      { key: "docCount", h: "Documents Uploaded", w: 12, g: G4, t: "int", c: true, sum: true },
+      { key: "docStatus", h: "Documents Status", w: 13, g: G4, t: "docstatus", c: true },
+      { key: "verified", h: "Documents Verified", w: 12, g: G5, t: "yn", c: true, count: true },
+      { key: "verifiedOn", h: "Verified On", w: 13, g: G5, t: "date", c: true },
+      { key: "remarks", h: "Verification Remarks", w: 30, g: G5, t: "text" },
+      { key: "received", h: "Compensation Received", w: 14, g: G5, t: "yn", c: true, count: true },
+      { key: "receivedOn", h: "Received On", w: 13, g: G5, t: "date", c: true },
+    ];
+    if (showComp) {
+      cols.push(
+        { key: "compLand", h: "Land Amount", w: 16, g: G6, t: "inr", sum: true },
+        { key: "compStructure", h: "Structure Amount", w: 16, g: G6, t: "inr", sum: true },
+        { key: "compTree", h: "Tree Amount", w: 16, g: G6, t: "inr", sum: true },
+        { key: "compEx", h: "Ex-gratia", w: 16, g: G6, t: "inr", sum: true },
+        { key: "compTotal", h: "Total Compensation", w: 18, g: G6, t: "inr", sum: true, bold: true },
+        { key: "compStatus", h: "Compensation Status", w: 24, g: G6, t: "cstatus", c: true }
+      );
+    }
+    cols.push(
+      { key: "stage", h: "Current Stage", w: 22, g: G7, t: "stage", c: true },
+      { key: "progress", h: "Progress", w: 10, g: G7, t: "pct", c: true, avg: true },
+      { key: "enlistedOn", h: "Enlisted On", w: 13, g: G7, t: "date", c: true },
+      { key: "escalated", h: "Escalated", w: 10, g: G7, t: "esc", c: true, count: true },
+      { key: "escRemark", h: "Escalation Remark", w: 34, g: G7, t: "text" }
+    );
+    return cols;
+  },
+
+  /* ---------- numbers for a whole phase ---------- */
+  phaseStats: function (phase) {
+    const views = DATA.phaseKhataList(phase.id).map(DATA.pkView);
+    const s = { views: views, total: views.length, notice: 0, docs: 0, verified: 0, paid: 0, escalated: 0, acquired: 0, comp: 0, disbursed: 0, progress: 0 };
+    let stageSum = 0;
+    views.forEach(function (v) {
+      if (v.noticeServed) s.notice++;
+      if (v.docsCollected) s.docs++;
+      if (v.documentsVerified) s.verified++;
+      if (v.compensationReceived) { s.paid++; s.disbursed += v.combinedCompensation; }
+      if (v.hasEscalation) s.escalated++;
+      s.acquired += v.combinedAcquiredLandAcres;
+      s.comp += v.combinedCompensation;
+      stageSum += v.stageIndex / 4;
+    });
+    s.progress = s.total ? stageSum / s.total : 0;
+    return s;
+  },
+
+  /* ---------- one khata -> one row of values ---------- */
+  buildRow: function (v, idx, showComp) {
+    const dash = "\u2014";
+    const pk = v.pk, k = v.khata;
+    const groupKhatas = v.groupIds.map(function (id) { return STATE.khatas[id]; }).filter(Boolean);
+    const kissams = [], villages = [];
+    let plotCount = 0, plotArea = 0, structures = 0, trees = 0;
+    groupKhatas.forEach(function (gk) {
+      structures += Number(gk.structureCount) || 0;
+      trees += Number(gk.treeCount) || 0;
+      const vil = (gk.location || {}).village;
+      if (vil && villages.indexOf(vil) === -1) villages.push(vil);
+      Object.keys(gk.plots || {}).forEach(function (pid) {
+        const p = gk.plots[pid] || {};
+        plotCount++;
+        plotArea += Number(p.totalAreaAcres) || 0;
+        const ks = String(p.kissam || "").trim();
+        if (ks && kissams.indexOf(ks) === -1) kissams.push(ks);
+      });
+    });
+
+    const notices = noticeDocList(pk);
+    const noticeDates = function (type) {
+      const list = notices.filter(function (n) { return n.noticeType === type; })
+        .map(function (n) { return XLREPORT.dmyToDate(n.noticeDate); }).filter(Boolean)
+        .sort(function (a, b) { return a - b; })
+        .map(function (d) { return fmtDMY(d.getTime()); });
+      return list.length ? list.join(", ") : dash;
+    };
+    const toDate = function (ts) { return ts ? new Date(ts) : dash; };
+
+    const docCount = Number(k.docCount) || 0;
+    const row = {
+      sno: idx,
+      khata: String(k.khataNumber || dash),
+      rt: k.rtName || "Unnamed RT",
+      rtId: k.rtId || dash,
+      block: v.blockNames.length ? v.blockNames.join(" + ") : dash,
+      village: villages.length ? villages.join(", ") : dash,
+      plots: plotCount,
+      kissams: kissams.length ? kissams.join(", ") : dash,
+      plotArea: Math.round(plotArea * 100) / 100,
+      acquired: Math.round(v.combinedAcquiredLandAcres * 100) / 100,
+      structures: structures,
+      trees: trees,
+      nLand: noticeDates("Land"), nStructure: noticeDates("Structure"), nTree: noticeDates("Tree"), nBlock: noticeDates("Block"),
+      noticeServed: v.noticeServed ? "Yes" : "No",
+      noticeOn: v.noticeServed ? toDate(pk.noticeServedAt) : dash,
+      docCount: docCount,
+      docStatus: v.docsCollected ? "Collected" : "Pending",
+      verified: v.documentsVerified ? "Yes" : "No",
+      verifiedOn: v.documentsVerified ? toDate(pk.documentsVerifiedAt) : dash,
+      remarks: pk.documentsVerifiedRemarks || dash,
+      received: v.compensationReceived ? "Yes" : "No",
+      receivedOn: v.compensationReceived ? toDate(pk.compensationReceivedAt) : dash,
+      stage: v.stageLabel,
+      progress: v.stageIndex / 4,
+      enlistedOn: toDate(pk.enlistedAt),
+      escalated: v.hasEscalation ? "Yes" : "No",
+      escRemark: v.hasEscalation ? pk.escalation.remarks : dash,
+    };
+
+    if (showComp) {
+      let any = false, blocked = "", firstStatus = "";
+      row.compLand = 0; row.compStructure = 0; row.compTree = 0; row.compEx = 0; row.compTotal = 0;
+      v.groupIds.forEach(function (id) {
+        const c = STATE.compensation[id];
+        if (!c) return;
+        any = true;
+        row.compLand += Number(c.landAmount) || 0;
+        row.compStructure += Number(c.structureAmount) || 0;
+        row.compTree += Number(c.treeAmount) || 0;
+        row.compEx += Number(c.exGratia) || 0;
+        row.compTotal += Number(c.totalAmount) || 0;
+        const st = String(c.status || "");
+        if (/blocked/i.test(st)) blocked = blocked || st; else if (st && !firstStatus) firstStatus = st;
+      });
+      row.compStatus = !any ? "Not set" : (blocked || firstStatus || "CR Approved");
+    }
+    return row;
+  },
+
+  /* ---------- style one data cell according to its column type ---------- */
+  paint: function (cell, col, val, zebra) {
+    const C = XLREPORT.COLORS;
+    let bg = zebra ? C.zebra : C.white, fg = C.ink, bold = !!col.bold, h = col.c ? "center" : "left";
+    const t = col.t;
+    if (t === "int") { cell.numFmt = '#,##0;-#,##0;"-"'; }
+    else if (t === "acre") { cell.numFmt = '0.00;-0.00;"-"'; h = "right"; }
+    else if (t === "inr") { cell.numFmt = XLREPORT.INR_FMT; h = "right"; }
+    else if (t === "date") { if (val instanceof Date) cell.numFmt = "dd-mm-yyyy"; h = "center"; }
+    else if (t === "pct") {
+      cell.numFmt = "0%"; bold = true;
+      if (val >= 1) { bg = C.greenBg; fg = C.green; }
+      else if (val >= 0.5) { bg = C.blueBg; fg = C.blue; }
+      else if (val > 0) { bg = C.amberBg; fg = C.amber; }
+      else { bg = C.grayBg; fg = C.soft; }
+    }
+    else if (t === "yn") {
+      if (val === "Yes") { bg = C.greenBg; fg = C.green; bold = true; } else { bg = C.roseBg; fg = C.rose; }
+    }
+    else if (t === "docstatus") {
+      if (val === "Collected") { bg = C.greenBg; fg = C.green; bold = true; } else { bg = C.amberBg; fg = C.amber; }
+    }
+    else if (t === "esc") {
+      if (val === "Yes") { bg = C.roseBg; fg = C.rose; bold = true; } else { fg = C.mute; }
+    }
+    else if (t === "cstatus") {
+      if (/blocked/i.test(String(val))) { bg = C.roseBg; fg = C.rose; bold = true; }
+      else if (val === "Not set") { bg = C.grayBg; fg = C.soft; }
+      else { bg = C.greenBg; fg = C.green; bold = true; }
+    }
+    else if (t === "stage") {
+      const st = XLREPORT.STAGE_STYLE[val];
+      if (st) { bg = st[0]; fg = st[1]; bold = true; }
+    }
+    cell.font = { name: "Calibri", size: 10, bold: bold, color: { argb: fg } };
+    cell.fill = XLREPORT.fill(bg);
+    cell.alignment = { vertical: "middle", horizontal: h, wrapText: t === "text" };
+    cell.border = XLREPORT.border();
+  },
+
+  styleHeader: function (cell) {
+    const C = XLREPORT.COLORS;
+    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: C.white } };
+    cell.fill = XLREPORT.fill(C.navy);
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = XLREPORT.border();
+  },
+
+  /* ---------- the sheet for ONE phase ---------- */
+  addPhaseSheet: function (wb, phase, sheetName, dateStr, timeStr, showComp, who) {
+    const C = XLREPORT.COLORS;
+    const ws = wb.addWorksheet(sheetName, { properties: { tabColor: { argb: C.brand } } });
+    const cols = XLREPORT.columns(showComp);
+    const N = cols.length;
+    cols.forEach(function (c, i) { ws.getColumn(i + 1).width = c.w; });
+
+    const st = XLREPORT.phaseStats(phase);
+    const views = st.views.slice().sort(function (a, b) {
+      return String(a.khata.khataNumber || "").localeCompare(String(b.khata.khataNumber || ""), undefined, { numeric: true });
+    });
+    const rows = views.map(function (v, i) { return XLREPORT.buildRow(v, i + 1, showComp); });
+
+    // Row 1: headline
+    ws.mergeCells(1, 1, 1, N);
+    const title = ws.getCell(1, 1);
+    title.value = DATA.phaseDisplayName(phase) + "_Report_As_Of_" + dateStr;
+    title.font = { name: "Calibri", size: 20, bold: true, color: { argb: C.white } };
+    title.fill = XLREPORT.fill(C.navy);
+    title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(1).height = 32;
+
+    // Row 2: sub-headline
+    ws.mergeCells(2, 1, 2, N);
+    const sub = ws.getCell(2, 1);
+    sub.value = "RT Compensation Management System   |   Generated on " + dateStr + " at " + timeStr + "   |   By " + who + "   |   " + views.length + " khata(s) in this phase";
+    sub.font = { name: "Calibri", size: 10, italic: true, color: { argb: C.white } };
+    sub.fill = XLREPORT.fill(C.brand);
+    sub.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(2).height = 18;
+    ws.getRow(3).height = 6;
+
+    // Rows 4-5: KPI cards (3 columns wide each)
+    const kpis = [
+      { l: "TOTAL KHATAS", v: st.total, f: "0", c: C.brand },
+      { l: "NOTICE SERVED", v: st.notice, f: '0" / ' + st.total + '"', c: "FF7C3AED" },
+      { l: "DOCUMENTS COLLECTED", v: st.docs, f: '0" / ' + st.total + '"', c: "FFB45309" },
+      { l: "DOCUMENTS VERIFIED", v: st.verified, f: '0" / ' + st.total + '"', c: "FF0E7490" },
+      { l: "COMPENSATION RECEIVED", v: st.paid, f: '0" / ' + st.total + '"', c: C.green },
+      { l: "OPEN ESCALATIONS", v: st.escalated, f: "0", c: C.rose },
+      { l: "ACQUIRED LAND", v: Math.round(st.acquired * 100) / 100, f: '0.00" Acre"', c: "FF0891B2" },
+    ];
+    if (showComp) {
+      kpis.push({ l: "TOTAL COMPENSATION", v: st.comp, f: XLREPORT.INR_FMT, c: "FF065F46" });
+      kpis.push({ l: "COMPENSATION DISBURSED", v: st.disbursed, f: XLREPORT.INR_FMT, c: "FF059669" });
+    }
+    const gap = { style: "thick", color: { argb: C.white } };
+    kpis.forEach(function (k, i) {
+      const c1 = i * 3 + 1, c2 = c1 + 2;
+      if (c2 > N) return;
+      ws.mergeCells(4, c1, 4, c2);
+      ws.mergeCells(5, c1, 5, c2);
+      for (let c = c1; c <= c2; c++) {
+        const a = ws.getCell(4, c), b = ws.getCell(5, c);
+        a.fill = XLREPORT.fill(C.grayBg);
+        b.fill = XLREPORT.fill(C.grayBg);
+        a.border = { top: { style: "medium", color: { argb: k.c } }, left: gap, right: gap };
+        b.border = { bottom: { style: "thin", color: { argb: C.line } }, left: gap, right: gap };
+      }
+      const lc = ws.getCell(4, c1), vc = ws.getCell(5, c1);
+      lc.value = k.l;
+      lc.font = { name: "Calibri", size: 8, bold: true, color: { argb: C.soft } };
+      lc.alignment = { vertical: "middle", horizontal: "center" };
+      vc.value = k.v;
+      vc.numFmt = k.f;
+      vc.font = { name: "Calibri", size: 16, bold: true, color: { argb: k.c } };
+      vc.alignment = { vertical: "middle", horizontal: "center" };
+    });
+    ws.getRow(4).height = 18;
+    ws.getRow(5).height = 26;
+    ws.getRow(6).height = 8;
+
+    // Row 7: group bands
+    const bandRow = 7, headRow = 8, firstData = 9;
+    let start = 1;
+    for (let i = 1; i <= N; i++) {
+      if (i === N || cols[i].g !== cols[i - 1].g) {
+        if (i > start) ws.mergeCells(bandRow, start, bandRow, i);
+        const bc = ws.getCell(bandRow, start);
+        bc.value = cols[start - 1].g;
+        for (let c = start; c <= i; c++) {
+          ws.getCell(bandRow, c).fill = XLREPORT.fill(XLREPORT.GROUP_COLORS[cols[start - 1].g] || C.brand);
+          ws.getCell(bandRow, c).border = { left: { style: "thin", color: { argb: C.white } }, right: { style: "thin", color: { argb: C.white } } };
+        }
+        bc.font = { name: "Calibri", size: 10, bold: true, color: { argb: C.white } };
+        bc.alignment = { vertical: "middle", horizontal: "center" };
+        start = i + 1;
+      }
+    }
+    ws.getRow(bandRow).height = 20;
+
+    // Row 8: column headers
+    cols.forEach(function (c, i) {
+      const cell = ws.getCell(headRow, i + 1);
+      cell.value = c.h;
+      XLREPORT.styleHeader(cell);
+    });
+    ws.getRow(headRow).height = 38;
+
+    if (!rows.length) {
+      ws.mergeCells(firstData, 1, firstData, N);
+      const e = ws.getCell(firstData, 1);
+      e.value = "No khatas have been enlisted in this phase yet.";
+      e.font = { name: "Calibri", size: 11, italic: true, color: { argb: C.soft } };
+      e.alignment = { vertical: "middle", horizontal: "center" };
+      ws.getRow(firstData).height = 30;
+    } else {
+      // Data rows
+      rows.forEach(function (row, ri) {
+        const rowNo = firstData + ri;
+        let lines = 1;
+        cols.forEach(function (c, ci) {
+          const val = row[c.key];
+          const cell = ws.getCell(rowNo, ci + 1);
+          cell.value = val;
+          XLREPORT.paint(cell, c, val, ri % 2 === 1);
+          if (c.t === "text") lines = Math.max(lines, Math.ceil(String(val == null ? "" : val).length / Math.max(6, c.w * 1.05)));
+        });
+        ws.getRow(rowNo).height = Math.max(22, Math.min(lines, 8) * 14 + 6);
+      });
+
+      // Totals row
+      const lastData = firstData + rows.length - 1;
+      const totRow = lastData + 1;
+      ws.mergeCells(totRow, 1, totRow, 3);
+      cols.forEach(function (c, ci) {
+        const cell = ws.getCell(totRow, ci + 1);
+        cell.fill = XLREPORT.fill(C.navy);
+        cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: C.white } };
+        cell.alignment = { vertical: "middle", horizontal: c.t === "acre" || c.t === "inr" ? "right" : "center" };
+        cell.border = XLREPORT.border();
+        if (ci === 0) { cell.value = "TOTAL  (" + rows.length + " khatas)"; cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 }; return; }
+        if (ci < 3) return;
+        const L = XLREPORT.colLetter(ci + 1);
+        if (c.sum) {
+          const total = rows.reduce(function (s, r) { return s + (Number(r[c.key]) || 0); }, 0);
+          cell.value = { formula: "SUBTOTAL(109," + L + firstData + ":" + L + lastData + ")", result: total };
+          cell.numFmt = c.t === "inr" ? XLREPORT.INR_FMT : (c.t === "acre" ? "0.00" : "#,##0");
+        } else if (c.count) {
+          cell.value = rows.filter(function (r) { return r[c.key] === "Yes"; }).length;
+          cell.numFmt = '0" Yes"';
+        } else if (c.avg) {
+          cell.value = rows.reduce(function (s, r) { return s + r[c.key]; }, 0) / rows.length;
+          cell.numFmt = "0%";
+        }
+      });
+      ws.getRow(totRow).height = 24;
+
+      // Footnote
+      const noteRow = totRow + 2;
+      ws.mergeCells(noteRow, 1, noteRow, Math.min(N, 14));
+      const nc = ws.getCell(noteRow, 1);
+      nc.value = "Notes: Status reflects the system as on " + dateStr + ". Land is in Acres. Notice dates are shown per notice type (Land / Structure / Tree / Block). Use the filter arrows on the header row to slice the data; totals update with the filter.";
+      nc.font = { name: "Calibri", size: 9, italic: true, color: { argb: C.soft } };
+      nc.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+      ws.getRow(noteRow).height = 30;
+
+      ws.autoFilter = { from: { row: headRow, column: 1 }, to: { row: lastData, column: N } };
+    }
+
+    ws.views = [{ state: "frozen", xSplit: 3, ySplit: headRow, showGridLines: false }];
+    ws.pageSetup = {
+      orientation: "landscape", paperSize: 8, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.6, header: 0.3, footer: 0.3 },
+      printTitlesRow: bandRow + ":" + headRow,
+    };
+    ws.headerFooter = { oddFooter: "&L&8RT Compensation Management System&C&8Page &P of &N&R&8As of " + dateStr };
+  },
+
+  /* ---------- optional first sheet: all phases side by side ---------- */
+  addSummarySheet: function (wb, phases, sheetName, dateStr, timeStr, showComp, who) {
+    const C = XLREPORT.COLORS;
+    const ws = wb.addWorksheet(sheetName, { properties: { tabColor: { argb: C.navy } } });
+    const cols = [
+      { h: "S.No.", w: 7, t: "int", c: true },
+      { h: "Phase", w: 36, t: "text", bold: true },
+      { h: "Khatas", w: 11, t: "int", c: true, sum: true },
+      { h: "Notice Served", w: 14, t: "int", c: true, sum: true },
+      { h: "Documents Collected", w: 16, t: "int", c: true, sum: true },
+      { h: "Documents Verified", w: 16, t: "int", c: true, sum: true },
+      { h: "Compensation Received", w: 17, t: "int", c: true, sum: true },
+      { h: "Open Escalations", w: 13, t: "int", c: true, sum: true },
+      { h: "Acquired Land (Acre)", w: 16, t: "acre", sum: true },
+    ];
+    if (showComp) {
+      cols.push({ h: "Total Compensation", w: 20, t: "inr", sum: true }, { h: "Compensation Disbursed", w: 22, t: "inr", sum: true });
+    }
+    cols.push({ h: "Overall Progress", w: 14, t: "pct", c: true, avg: true });
+    const N = cols.length;
+    cols.forEach(function (c, i) { ws.getColumn(i + 1).width = c.w; });
+
+    ws.mergeCells(1, 1, 1, N);
+    const t = ws.getCell(1, 1);
+    t.value = "All_Phases_Summary_Report_As_Of_" + dateStr;
+    t.font = { name: "Calibri", size: 20, bold: true, color: { argb: C.white } };
+    t.fill = XLREPORT.fill(C.navy);
+    t.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(1).height = 32;
+
+    ws.mergeCells(2, 1, 2, N);
+    const s = ws.getCell(2, 1);
+    s.value = "RT Compensation Management System   |   Generated on " + dateStr + " at " + timeStr + "   |   By " + who + "   |   " + phases.length + " phase(s)";
+    s.font = { name: "Calibri", size: 10, italic: true, color: { argb: C.white } };
+    s.fill = XLREPORT.fill(C.brand);
+    s.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(2).height = 18;
+    ws.getRow(3).height = 8;
+
+    cols.forEach(function (c, i) { const cell = ws.getCell(4, i + 1); cell.value = c.h; XLREPORT.styleHeader(cell); });
+    ws.getRow(4).height = 36;
+
+    const data = phases.map(function (p, i) {
+      const x = XLREPORT.phaseStats(p);
+      const r = [i + 1, DATA.phaseDisplayName(p), x.total, x.notice, x.docs, x.verified, x.paid, x.escalated, Math.round(x.acquired * 100) / 100];
+      if (showComp) r.push(x.comp, x.disbursed);
+      r.push(x.progress);
+      return r;
+    });
+    data.forEach(function (r, ri) {
+      r.forEach(function (val, ci) {
+        const cell = ws.getCell(5 + ri, ci + 1);
+        cell.value = val;
+        XLREPORT.paint(cell, cols[ci], val, ri % 2 === 1);
+      });
+      ws.getRow(5 + ri).height = 24;
+    });
+
+    const first = 5, last = 4 + data.length, tot = last + 1;
+    cols.forEach(function (c, ci) {
+      const cell = ws.getCell(tot, ci + 1);
+      cell.fill = XLREPORT.fill(C.navy);
+      cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: C.white } };
+      cell.alignment = { vertical: "middle", horizontal: c.t === "acre" || c.t === "inr" ? "right" : "center" };
+      cell.border = XLREPORT.border();
+      if (ci === 1) { cell.value = "TOTAL"; cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 }; return; }
+      const L = XLREPORT.colLetter(ci + 1);
+      if (c.sum) {
+        const total = data.reduce(function (a, r) { return a + (Number(r[ci]) || 0); }, 0);
+        cell.value = { formula: "SUM(" + L + first + ":" + L + last + ")", result: total };
+        cell.numFmt = c.t === "inr" ? XLREPORT.INR_FMT : (c.t === "acre" ? "0.00" : "#,##0");
+      } else if (c.avg) {
+        cell.value = data.reduce(function (a, r) { return a + r[ci]; }, 0) / data.length;
+        cell.numFmt = "0%";
+      }
+    });
+    ws.getRow(tot).height = 24;
+
+    ws.views = [{ state: "frozen", ySplit: 4, showGridLines: false }];
+    ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    ws.headerFooter = { oddFooter: "&L&8RT Compensation Management System&C&8Page &P of &N&R&8As of " + dateStr };
+  },
+
+  /* ---------- entry point (button click) ---------- */
+  generate: function (btn) {
+    if (typeof ExcelJS === "undefined") { showToast("Excel library failed to load. Check your connection and refresh the page.", "error"); return; }
+    const phases = DATA.phaseList();
+    if (!phases.length) { showToast("There are no phases to report on yet.", "error"); return; }
+
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="icon-loader-circle i"></i><span>Generating&hellip;</span>';
+
+    const now = new Date();
+    const pad = function (n) { return String(n).padStart(2, "0"); };
+    const dateStr = fmtDMY(now.getTime());
+    const timeStr = pad(now.getHours()) + ":" + pad(now.getMinutes());
+    const who = (STATE.userName || STATE.userId || "User") + (STATE.role ? " (" + STATE.role + ")" : "");
+    const showComp = CAN.canSeeCompensation();
+
+    setTimeout(function () {
+      let job;
+      try {
+        const wb = new ExcelJS.Workbook();
+        wb.creator = "RT Compensation Management System";
+        wb.created = now;
+        const used = {};
+        if (XLREPORT.INCLUDE_SUMMARY_SHEET) {
+          XLREPORT.addSummarySheet(wb, phases, XLREPORT.safeSheetName("All Phases Summary", used), dateStr, timeStr, showComp, who);
+        }
+        phases.forEach(function (p) {
+          XLREPORT.addPhaseSheet(wb, p, XLREPORT.safeSheetName(DATA.phaseDisplayName(p), used), dateStr, timeStr, showComp, who);
+        });
+        job = wb.xlsx.writeBuffer();
+      } catch (err) { job = Promise.reject(err); }
+
+      job.then(function (buf) {
+        const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "Phase_Wise_Report_As_Of_" + dateStr + ".xlsx";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        showToast("Excel report downloaded.", "success");
+      }).catch(function (err) {
+        console.error(err);
+        showToast("Could not generate the Excel report.", "error");
+      }).finally(function () {
+        btn.disabled = false; btn.innerHTML = original;
+      });
+    }, 60);
+  },
+};
+
 function wirePhaseSystem() {
   $("#btnCancelCreatePhase").addEventListener("click", PhaseModal.close);
   $("#btnConfirmCreatePhase").addEventListener("click", PhaseModal.create);
@@ -3472,7 +4051,7 @@ PAGES.khataDetail = function (khataId) {
     '<div class="rt-hero"><div><h1>' + escapeHtml(k.rtName || "Unnamed RT") + '</h1><div class="sub">Khata ' + escapeHtml(k.khataNumber) + " &middot; " + escapeHtml(k.rtId || "&mdash;") + " &middot; " + escapeHtml(block.blockName || "") + "</div></div>" +
     '<div class="stat-row"><div class="stat"><b>' + fmtAcres(land.acquiredLandAcres) + '</b><span>Acquired land</span></div><div class="stat"><b>' + structureCount + '</b><span>Structures</span></div><div class="stat"><b>' + treeCount + '</b><span>Tree records</span></div></div></div>' +
 
-    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land</button><button class="tab-btn" data-tab="plots">Plots (' + plotCount + ')</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docCount + ')</button>' +
+    '<div class="tabs"><button class="tab-btn active" data-tab="overview">Overview</button><button class="tab-btn" data-tab="land">Land (' + plotCount + ' plots)</button><button class="tab-btn" data-tab="structures">Structures</button><button class="tab-btn" data-tab="trees">Trees</button><button class="tab-btn" data-tab="documents">Documents (' + docCount + ')</button>' +
     (CAN.canSeeCompensation() ? '<button class="tab-btn" data-tab="compensation">Compensation</button>' : "") + "</div>" +
 
     '<div class="tabpanel active" data-panel="overview"><div class="card mb-16"><div class="section-title">RT &amp; location</div><div class="deflist">' +
@@ -3491,11 +4070,7 @@ PAGES.khataDetail = function (khataId) {
 
     "</div>" +
 
-    '<div class="tabpanel" data-panel="land"><div class="card"><div class="section-title">Land</div><div class="deflist">' +
-    PAGES.defItem("Acquired land", fmtAcres(land.acquiredLandAcres)) + PAGES.defItem("Land category", land.landCategory) +
-    "</div></div></div>" +
-
-    '<div class="tabpanel" data-panel="plots">' + PAGES.plotsTabHtml(plots) + '</div>' +
+    '<div class="tabpanel" data-panel="land">' + PAGES.plotsTabHtml(plots, land.acquiredLandAcres) + "</div>" +
     '<div class="tabpanel" data-panel="structures"><div class="card"><div class="section-title">Structures <span class="muted">' + structureCount + ' record(s)</span></div>' +
     (!extras ? skeletonCards(2) : (structures.length ? structures.map(function (s) {
       return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(s.type || "Structure") + '</div><div class="details">' + escapeHtml(s.usage || "") + (s.area ? " &middot; " + escapeHtml(s.area) : "") + (s.remarks ? " &middot; " + escapeHtml(s.remarks) : "") + '</div></div><span class="badge badge-slate">' + escapeHtml(s.condition || "&mdash;") + "</span></div>";
@@ -3518,21 +4093,43 @@ PAGES.defItem = function (label, value) {
   return '<div class="item"><b>' + display + "</b><span>" + escapeHtml(label) + "</span></div>";
 };
 
-PAGES.plotsTabHtml = function (plots) {
+PAGES.plotsTabHtml = function (plots, khataAcquiredAcres) {
   if (!plots.length) {
-    return '<div class="card">' + emptyState("icon-map", "No plots recorded", "No plot entries exist for this Khata.") + '</div>';
+    return '<div class="card mb-16"><div class="section-title">Land</div><div class="deflist">' +
+      PAGES.defItem("Acquired land", fmtAcres(khataAcquiredAcres)) +
+      '</div></div>' +
+      '<div class="card">' + emptyState("icon-map", "No plots recorded", "No plot entries exist for this Khata.") + '</div>';
   }
+
   let totalArea = 0, acquiredArea = 0;
+  const byKissam = {};
   plots.forEach(function (p) {
-    totalArea += Number(p.totalAreaAcres) || 0;
-    acquiredArea += Number(p.acquiredAreaAcres) || 0;
+    const t = Number(p.totalAreaAcres) || 0;
+    const a = Number(p.acquiredAreaAcres) || 0;
+    totalArea += t;
+    acquiredArea += a;
+    const ks = String(p.kissam || "").trim() || "Unclassified";
+    if (!byKissam[ks]) byKissam[ks] = { count: 0, total: 0, acquired: 0 };
+    byKissam[ks].count++;
+    byKissam[ks].total += t;
+    byKissam[ks].acquired += a;
   });
 
-  const summary = '<div class="card mb-16"><div class="section-title">Plot summary</div><div class="deflist">' +
+  const summary = '<div class="card mb-16"><div class="section-title">Land summary</div><div class="deflist">' +
+    PAGES.defItem("Acquired land", fmtAcres(khataAcquiredAcres)) +
     PAGES.defItem("Number of plots", String(plots.length)) +
     PAGES.defItem("Total plot area", fmtAcres(totalArea)) +
     PAGES.defItem("Acquired plot area", fmtAcres(acquiredArea)) +
     '</div></div>';
+
+  const kissamNames = Object.keys(byKissam).sort();
+  const categoryCard = '<div class="card mb-16"><div class="section-title">Land category-wise <span class="muted">' + kissamNames.length + ' categor' + (kissamNames.length === 1 ? 'y' : 'ies') + '</span></div>' +
+    kissamNames.map(function (ks) {
+      const g = byKissam[ks];
+      return '<div class="sub-item-card"><div><div class="name">' + escapeHtml(ks) + '</div>' +
+        '<div class="details">' + g.count + ' plot(s) &middot; Total: ' + fmtAcres(g.total) + ' &middot; Acquired: ' + fmtAcres(g.acquired) + '</div></div></div>';
+    }).join("") +
+    '</div>';
 
   const rows = plots.map(function (p) {
     const fullyAcquired = (Number(p.acquiredAreaAcres) || 0) >= (Number(p.totalAreaAcres) || 0) && Number(p.totalAreaAcres) > 0;
@@ -3545,7 +4142,7 @@ PAGES.plotsTabHtml = function (plots) {
       '</div>';
   }).join("");
 
-  return summary + '<div class="card"><div class="section-title">Plots <span class="muted">' + plots.length + ' record(s)</span></div>' + rows + '</div>';
+  return summary + categoryCard + '<div class="card"><div class="section-title">Plots <span class="muted">' + plots.length + ' record(s)</span></div>' + rows + '</div>';
 };
 
 PAGES.compensationTabHtml = function (khataId) {
@@ -4396,7 +4993,7 @@ PAGES.adminAnalytics = function () {
     '<div class="chart-grid">' +
     '<div class="chart-card"><div class="section-title">Khata count by block</div><canvas id="chartByBlock"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Compensation by block</div><canvas id="chartCompByBlock"></canvas></div>' +
-    '<div class="chart-card"><div class="section-title">Land category distribution</div><canvas id="chartLandCat"></canvas></div>' +
+    '<div class="chart-card"><div class="section-title">Land category distribution <span class="muted">acquired acres</span></div><canvas id="chartLandCat"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Compensation status</div><canvas id="chartStatus"></canvas></div>' +
     '<div class="chart-card"><div class="section-title">Documentation status</div><canvas id="chartDocStatus"></canvas></div>' +
     "</div>"
@@ -4482,12 +5079,29 @@ PAGES.afterAdminAnalytics = function () {
     STATE.charts.compByBlock = new Chart(ctx2, { type: "bar", data: { labels: blockNames, datasets: [{ label: "Compensation (\u20B9)", data: compByBlock, backgroundColor: "#10B981", borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
   }
 
-  const landCatCounts = {};
-  DATA.khataList().forEach(function (k) { const cat = (k.land && k.land.landCategory) || "Unclassified"; landCatCounts[cat] = (landCatCounts[cat] || 0) + 1; });
+  const landCatAcres = {};
+  DATA.khataList().forEach(function (k) {
+    const plots = k.plots || {};
+    Object.keys(plots).forEach(function (pid) {
+      const p = plots[pid] || {};
+      const cat = String(p.kissam || "").trim() || "Unclassified";
+      landCatAcres[cat] = (landCatAcres[cat] || 0) + (Number(p.acquiredAreaAcres) || 0);
+    });
+  });
+  Object.keys(landCatAcres).forEach(function (c) { landCatAcres[c] = Math.round(landCatAcres[c] * 100) / 100; });
   const ctx3 = $("#chartLandCat");
-  if (ctx3 && Object.keys(landCatCounts).length) {
-    STATE.charts.landCat = new Chart(ctx3, { type: "doughnut", data: { labels: Object.keys(landCatCounts), datasets: [{ data: Object.values(landCatCounts), backgroundColor: palette }] }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 11 } } } } } });
-  } else if (ctx3) { ctx3.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Land category data will appear here once khatas are added."); }
+  if (ctx3 && Object.keys(landCatAcres).length) {
+    STATE.charts.landCat = new Chart(ctx3, {
+      type: "doughnut",
+      data: { labels: Object.keys(landCatAcres), datasets: [{ data: Object.values(landCatAcres), backgroundColor: palette }] },
+      options: {
+        plugins: {
+          legend: { position: "bottom", labels: { boxWidth: 11, font: { size: 11 } } },
+          tooltip: { callbacks: { label: function (c) { return " " + c.label + ": " + c.parsed.toFixed(2) + " Acre"; } } },
+        },
+      },
+    });
+  } else if (ctx3) { ctx3.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Land category data will appear here once plots are imported."); }
 
   const statusCounts = {};
   Object.keys(STATE.compensation).forEach(function (id) { const s = STATE.compensation[id].status || "Unspecified"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
@@ -4525,7 +5139,6 @@ PAGES.adminRecords = function () {
     '<div class="field" id="f_khataNumber"><label>Khata number</label><input id="in_khataNumber" placeholder="e.g. 6 or 223/114"><div class="error-msg">Khata number is required.</div></div>' +
     '<div class="field" id="f_rtName"><label>RT name</label><input id="in_rtName" placeholder="Recorded Tenant name"><div class="error-msg">RT name is required.</div></div>' +
     '<div class="field"><label>Acquired land (acres)</label><input id="in_land" type="number" step="0.01" placeholder="e.g. 1.26"></div>' +
-    '<div class="field"><label>Land category / kissam</label><input id="in_landCat" placeholder="e.g. Taila-I"></div>' +
     '<button class="btn btn-primary" id="btnAddKhata"><i class="icon-plus i"></i>Add khata</button></div>' +
     "</div>" +
 
@@ -4563,7 +5176,7 @@ PAGES.afterAdminRecords = function () {
     const blockId = $("#in_khataBlock").value, khataNumber = $("#in_khataNumber").value.trim(), rtName = $("#in_rtName").value.trim();
     PAGES.validateField("f_khataBlock", !!blockId); PAGES.validateField("f_khataNumber", !!khataNumber); PAGES.validateField("f_rtName", !!rtName);
     if (!blockId || !khataNumber || !rtName) { showToast("Please fill in the required fields.", "error"); return; }
-    const acres = parseFloat($("#in_land").value), landCategory = $("#in_landCat").value.trim();
+    const acres = parseFloat($("#in_land").value), landCategory = "";
 
     API.post("addKhata", { blockId: blockId, khataNumber: khataNumber, rtName: rtName, acquiredLandAcres: acres, landCategory: landCategory })
       .then(function (data) {
@@ -4722,6 +5335,8 @@ const LoginGate = {
     $("#btnGateLogin").addEventListener("click", LoginGate.submit);
     $("#glUserId").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
     $("#glPassword").addEventListener("keydown", function (e) { if (e.key === "Enter") LoginGate.submit(); });
+    $("#glUserId").addEventListener("input", LoginGate.clearError);
+    $("#glPassword").addEventListener("input", LoginGate.clearError);
 
     const EYE_OPEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
     const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
@@ -4734,9 +5349,21 @@ const LoginGate = {
     });
   },
 
+    showError: function (msg) {
+    const el = $("#glError");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add("show");
+  },
+  clearError: function () {
+    const el = $("#glError");
+    if (el) { el.classList.remove("show"); el.textContent = ""; }
+  },
+
   submit: function () {
     const userId = $("#glUserId").value.trim();
     const password = $("#glPassword").value;
+    LoginGate.clearError();
     PAGES.validateField("glFieldId", !!userId);
     PAGES.validateField("glFieldPassword", !!password);
     if (!userId || !password) return;
@@ -4746,11 +5373,17 @@ const LoginGate = {
 
     AUTH.login(userId, password).then(function () {
       $("#glUserId").value = ""; $("#glPassword").value = "";
+      LoginGate.clearError();
       LoginGate.hide();
       SPLASH.show();
       boot2();
     }).catch(function (err) {
-      showToast(err.message || "Sign-in failed. Check your credentials.", "error");
+      const msg = (err && err.code === "UNAUTHORIZED")
+        ? "Incorrect User ID or password. Please try again."
+        : ((err && err.message) || "Sign-in failed. Please check your connection and try again.");
+      LoginGate.showError(msg);
+      $("#glPassword").value = "";
+      $("#glPassword").focus();
     }).finally(function () {
       btn.disabled = false; btn.innerHTML = '<i class="icon-log-in i"></i><span>Sign in</span>';
     });
