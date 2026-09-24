@@ -3853,15 +3853,6 @@ const XLREPORT = {
       });
       ws.getRow(totRow).height = 24;
 
-      // Footnote
-      const noteRow = totRow + 2;
-      ws.mergeCells(noteRow, 1, noteRow, Math.min(N, 14));
-      const nc = ws.getCell(noteRow, 1);
-      nc.value = "Notes: Status reflects the system as on " + dateStr + ". Land is in Acres. Notice dates are shown per notice type (Land / Structure / Tree / Block). Use the filter arrows on the header row to slice the data; totals update with the filter.";
-      nc.font = { name: "Calibri", size: 9, italic: true, color: { argb: C.soft } };
-      nc.alignment = { vertical: "top", horizontal: "left", wrapText: true };
-      ws.getRow(noteRow).height = 30;
-
       ws.autoFilter = { from: { row: headRow, column: 1 }, to: { row: lastData, column: N } };
     }
 
