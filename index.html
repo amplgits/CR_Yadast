@@ -974,6 +974,8 @@ const STATE = {
   khataSearchQuery: "",
   khataSortBy: "khataNumberAsc",
   executorReturnPhaseId: null,
+    phaseJumpPkId: null,
+  phaseJumpKhataNumber: null,
   khataDocCategoryFilter: "all",
   docUploadCategories: { Land: false, Structure: false, Tree: false, Block: false },
   globalDocsCursor: null,
@@ -2497,16 +2499,29 @@ PAGES.phaseDetail = function (phaseId) {
 
   const f = STATE.phaseKhataFilter;
   const filtered = views.filter(function (v) {
+    if (f === "jump") return v.id === STATE.phaseJumpPkId;
     if (f === "escalated") return v.hasEscalation;
     if (f === "pending") return v.stageIndex < 4;
     if (f === "completed") return v.stageIndex === 4;
     return true;
   });
 
+  const jumpMap = {};
+  const jumpOptions = views.map(function (v) {
+    const label = String(v.khata.khataNumber || "");
+    if (label) jumpMap[label] = v.id;
+    return '<option value="' + escapeHtml(label) + '">';
+  }).join("");
+  PAGES._phaseJumpMap = jumpMap; // read by afterPhaseDetail right after render
+
   return (
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> <a href="#/phases">Phases</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> ' + escapeHtml(DATA.phaseDisplayName(phase)) + "</div>" +
     '<div class="page-head"><div><h1>' + escapeHtml(DATA.phaseDisplayName(phase)) + '</h1><p>' + total + ' khata(s) enlisted in this phase.</p></div>' +
-    '<div class="flex gap-8">' +
+    '<div class="flex gap-8" style="flex-wrap:wrap;align-items:center;">' +
+    '<div style="width:180px;max-width:50vw;">' +
+    '<input type="text" id="pkJumpInput" list="pkJumpDatalist" placeholder="Khata No.&hellip;" autocomplete="off" value="' + escapeHtml(STATE.phaseJumpKhataNumber || "") + '" style="height:36px;width:100%;border-radius:9px;border:1.5px solid var(--border);padding:0 12px;font-family:inherit;font-size:13.5px;color:var(--ink);">' +
+    '<datalist id="pkJumpDatalist">' + jumpOptions + '</datalist>' +
+    '</div>' +
     (CAN.fullControl() ? '<button class="btn btn-ghost btn-sm" id="btnRenamePhaseDetail"><i class="icon-pencil i"></i>Rename</button>' : '') +
     (CAN.isAdminOnly() ? '<button class="btn btn-danger btn-sm" id="btnDeletePhaseDetail"><i class="icon-trash-2 i"></i>Delete phase</button>' : '') +
     (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnEnlistKhata"><i class="icon-plus i"></i>Enlist khatas</button>' : '') +
@@ -2525,6 +2540,7 @@ PAGES.phaseDetail = function (phaseId) {
     '<button class="tab-btn' + (f === "completed" ? " active" : "") + '" data-pk-filter="completed">Completed <span class="muted">' + counts.paid + '</span></button>' +
     '<button class="tab-btn' + (f === "escalated" ? " active" : "") + '" data-pk-filter="escalated">Escalated <span class="muted">' + counts.escalated + '</span></button>' +
     '</div>' +
+    (f === "jump" ? '<div class="mb-16"><span class="badge badge-brand">Khata ' + escapeHtml(STATE.phaseJumpKhataNumber || "") + '</span> <button class="btn btn-ghost btn-sm" id="btnClearJump" style="margin-left:8px;">Show all</button></div>' : '') +
 
     (filtered.length
       ? '<div class="grid-cards">' + filtered.map(PAGES.pkCardHtml).join("") + "</div>"
@@ -2574,6 +2590,30 @@ PAGES.afterPhaseDetail = function (phaseId) {
   $all("[data-pk-open]").forEach(function (el) {
     el.addEventListener("click", function () { PKModal.open(el.getAttribute("data-pk-open")); });
   });
+
+  const jumpInput = $("#pkJumpInput");
+  if (jumpInput) {
+    jumpInput.addEventListener("change", function () {
+      const pkId = PAGES._phaseJumpMap && PAGES._phaseJumpMap[jumpInput.value];
+      if (pkId) {
+        STATE.phaseKhataFilter = "jump";
+        STATE.phaseJumpPkId = pkId;
+        STATE.phaseJumpKhataNumber = jumpInput.value;
+        Router.render();
+      }
+    });
+  }
+
+  const clearJumpBtn = $("#btnClearJump");
+  if (clearJumpBtn) {
+    clearJumpBtn.addEventListener("click", function () {
+      STATE.phaseKhataFilter = "all";
+      STATE.phaseJumpPkId = null;
+      STATE.phaseJumpKhataNumber = null;
+      Router.render();
+    });
+  }
+
   const btn = $("#btnEnlistKhata");
   if (btn) btn.addEventListener("click", function () { EnlistModal.open(phaseId); });
 
