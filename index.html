@@ -891,6 +891,7 @@ const OPTIONAL_DOC_TYPES = [
 const MANDATORY_DOC_TYPES = DOC_TYPES.filter(function (t) { return OPTIONAL_DOC_TYPES.indexOf(t) === -1; });
 
 const NOTICE_TYPES = ["Land", "Structure", "Tree", "Block"];
+const NOTICE_CHECKBOX_TYPES = ["Land", "Structure", "Tree"]; // only these get a "served" checkbox — Block never does
 
 /* Document CATEGORIES reuse the same four labels as notice types.
    A document (from the general checklist - PAN card, voter card, etc.)
@@ -1560,7 +1561,13 @@ const DATA = {
     const combinedAcquiredLandAcres = groupKhatas.reduce(function (sum, k) { return sum + (Number((k.land || {}).acquiredLandAcres) || 0); }, 0);
     const combinedCompensation = groupIds.reduce(function (sum, id) { const c = STATE.compensation[id]; return sum + (c ? Number(c.totalAmount || 0) : 0); }, 0);
     const docsCollected = groupIds.some(function (id) { return PAGES.isDocComplete(id); });
-    const noticeServed = !!pk.noticeServed;
+    const noticeServedByType = pk.noticeServedByType || {};
+    const noticeTypesPresent = NOTICE_CHECKBOX_TYPES.filter(function (t) {
+      return noticeDocList(pk).some(function (n) { return n.noticeType === t; });
+    });
+    const noticeServed = noticeTypesPresent.length > 0 && noticeTypesPresent.every(function (t) {
+      return !!(noticeServedByType[t] && noticeServedByType[t].served);
+    });
     const documentsVerified = !!pk.documentsVerified;
     const compensationReceived = !!pk.compensationReceived;
 
@@ -1579,6 +1586,7 @@ const DATA = {
       isCombined: isCombined, groupIds: groupIds, blockNames: blockNames,
       combinedAcquiredLandAcres: combinedAcquiredLandAcres, combinedCompensation: combinedCompensation,
       docsCollected: docsCollected, noticeServed: noticeServed,
+      noticeTypesPresent: noticeTypesPresent, noticeServedByType: noticeServedByType,
       documentsVerified: documentsVerified, compensationReceived: compensationReceived,
       stageIndex: stageIndex, stageLabel: stageLabels[stageIndex],
       hasEscalation: !!(pk.escalation && pk.escalation.remarks),
@@ -2525,16 +2533,28 @@ PAGES.phaseDetail = function (phaseId) {
 };
 
 PAGES.pkCardHtml = function (v) {
-  const steps = [
-    { label: "Notice", done: v.noticeServed, icon: "icon-bell-ring" },
+  const NOTICE_STEP_META = {
+    Land: { icon: "icon-bell-ring", color: "#4338CA" },
+    Structure: { icon: "icon-home", color: "#B45309" },
+    Tree: { icon: "icon-trees", color: "#047857" },
+  };
+  const noticeSteps = v.noticeTypesPresent.length
+    ? v.noticeTypesPresent.map(function (type) {
+        const meta = NOTICE_STEP_META[type] || { icon: "icon-bell-ring", color: "#4338CA" };
+        const entry = v.noticeServedByType[type] || {};
+        return { label: type, done: !!entry.served, icon: meta.icon, color: meta.color };
+      })
+    : [{ label: "Notice", done: false, icon: "icon-bell-ring" }];
+  const steps = noticeSteps.concat([
     { label: "Documents", done: v.docsCollected, icon: "icon-folder-check" },
     { label: "Verified", done: v.documentsVerified, icon: "icon-badge-check" },
     { label: "Compensation", done: v.compensationReceived, icon: "icon-indian-rupee" },
-  ];
+  ]);
   const blockingIndex = steps.findIndex(function (s) { return !s.done; });
   const stepsHtml = steps.map(function (s, i) {
     const cls = s.done ? " done" : (v.hasEscalation && i === blockingIndex ? " blocked" : "");
-    return '<div class="stage-step' + cls + '"><i class="' + s.icon + ' i"></i><span>' + s.label + '</span></div>';
+    const iconStyle = (s.done && s.color) ? ' style="background:' + s.color + ';color:#fff;"' : "";
+    return '<div class="stage-step' + cls + '"><i class="' + s.icon + ' i"' + iconStyle + '></i><span>' + s.label + '</span></div>';
   }).join('<div class="stage-line"></div>');
 
   return '<div class="entity-card" data-pk-open="' + v.id + '"><div class="eyebrow">KHATA ' + escapeHtml(v.khata.khataNumber || "") + '</div><h3>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h3>' +
@@ -2802,6 +2822,24 @@ const PKModal = {
     return html + '</div>';
   },
 
+  noticeCheckboxesHtml: function (v) {
+    if (!v.noticeTypesPresent.length) {
+      return '<div class="text-sm text-mute mb-16">Upload at least one Land, Structure or Tree notice above to enable the &ldquo;served&rdquo; checkbox(es).</div>';
+    }
+    const TYPE_COLOR = { Land: "#4338CA", Structure: "#B45309", Tree: "#047857" };
+    return v.noticeTypesPresent.map(function (type) {
+      const entry = v.noticeServedByType[type] || {};
+      const served = !!entry.served;
+      const disabled = !CAN.fullControl();
+      const dot = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (served ? TYPE_COLOR[type] : "var(--border-strong)") + ';margin-right:8px;flex-shrink:0;"></span>';
+      return '<div class="check-row">' + dot +
+        '<input type="checkbox" data-notice-served-type="' + type + '"' + (served ? " checked" : "") + (disabled ? " disabled" : "") + '>' +
+        '<label>' + type + ' notice served' + (!CAN.fullControl() ? '<span class="hint">Only a Verifier or Admin can toggle this</span>' : '') + '</label></div>' +
+        (served ? '<div class="text-sm text-mute" style="margin:-8px 0 8px 29px;">Marked served on <b>' + fmtDMY(entry.servedAt) + '</b></div>' : '') +
+        '<div class="field" style="margin:0 0 14px 29px;"><label>' + type + ' remarks</label><textarea rows="2" data-notice-remarks-type="' + type + '" placeholder="Remarks for ' + type + ' notice (optional)"' + (disabled ? " disabled" : "") + '>' + escapeHtml(entry.remarks || "") + '</textarea></div>';
+    }).join("");
+  },
+
   uploadNotice: function (file, noticeType, noticeDate, target) {
     const isPdf = file.type === "application/pdf";
     const isImage = /^image\//.test(file.type);
@@ -2878,11 +2916,7 @@ const PKModal = {
 
        PKModal.noticeSectionHtml(noticeList) +
 
-      // Notice served checkbox: full control (Verifier/Admin) can toggle
-      // it. Executor sees it always disabled - checkbox state is
-      // display-only for them, matching "cannot select any checkbox".
-      '<div class="check-row"><input type="checkbox" id="pkNotice"' + (v.noticeServed ? " checked" : "") + ((!noticeDoc || !CAN.fullControl()) ? " disabled" : "") + '><label for="pkNotice">Notice served' + (!noticeDoc ? '<span class="hint">Upload the notice document above first</span>' : (!CAN.fullControl() ? '<span class="hint">Only a Verifier or Admin can toggle this</span>' : '')) + '</label></div>' +
-      (v.noticeServed ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Marked served on <b>' + fmtDMY(pk.noticeServedAt) + '</b></div>' : '') +
+      PKModal.noticeCheckboxesHtml(v) +
 
       '<div class="field"><label>Documents collected</label>' +
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
@@ -3068,23 +3102,50 @@ const PKModal = {
 
     
 
-    const noticeCb = $("#pkNotice");
-    if (noticeCb && !noticeCb.disabled) noticeCb.addEventListener("change", function () {
-      if (!CAN.fullControl()) { noticeCb.checked = !noticeCb.checked; return; }
-      const val = noticeCb.checked;
-      const pkId = PKModal.currentId;
-      const pk = STATE.phaseKhatas[pkId];
-      const prev = pk.noticeServed;
-      pk.noticeServed = val;
-      Router.render(); PKModal.render();
-      showToast(val ? "Notice marked as served." : "Notice mark removed.", "success");
-      API.post("setNoticeServed", { phaseKhataId: pkId, value: val })
-        .then(function () { DATA.refreshQuietly(); })
-        .catch(function (err) {
-          pk.noticeServed = prev;
-          Router.render(); PKModal.render();
-          showToast(err.message || "Could not update", "error");
-        });
+    $all("[data-notice-served-type]").forEach(function (cb) {
+      if (cb.disabled) return;
+      cb.addEventListener("change", function () {
+        if (!CAN.fullControl()) { cb.checked = !cb.checked; return; }
+        const type = cb.getAttribute("data-notice-served-type");
+        const val = cb.checked;
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        const remarksBox = $('[data-notice-remarks-type="' + type + '"]');
+        const remarks = remarksBox ? remarksBox.value.trim() : "";
+        pk.noticeServedByType = pk.noticeServedByType || {};
+        const prevEntry = pk.noticeServedByType[type];
+        pk.noticeServedByType[type] = { served: val, servedAt: val ? Date.now() : null, servedBy: val ? (STATE.userId || "Public User") : null, remarks: remarks || null };
+        Router.render(); PKModal.render();
+        showToast(type + (val ? " notice marked as served." : " notice mark removed."), "success");
+        API.post("setNoticeServedByType", { phaseKhataId: pkId, noticeType: type, value: val, remarks: remarks })
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            pk.noticeServedByType[type] = prevEntry;
+            Router.render(); PKModal.render();
+            showToast(err.message || "Could not update", "error");
+          });
+      });
+    });
+
+    $all("[data-notice-remarks-type]").forEach(function (box) {
+      if (box.disabled) return;
+      box.addEventListener("change", function () {
+        const type = box.getAttribute("data-notice-remarks-type");
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        const entry = (pk.noticeServedByType && pk.noticeServedByType[type]) || {};
+        if (!entry.served) return; // nothing to save until this type is actually marked served
+        const remarks = box.value.trim();
+        const prevRemarks = entry.remarks;
+        entry.remarks = remarks || null;
+        API.post("setNoticeServedByType", { phaseKhataId: pkId, noticeType: type, value: true, remarks: remarks })
+          .then(function () { DATA.refreshQuietly(); showToast(type + " remarks saved.", "success"); })
+          .catch(function (err) {
+            entry.remarks = prevRemarks;
+            PKModal.render();
+            showToast(err.message || "Could not save remarks", "error");
+          });
+      });
     });
 
         const verifiedCb = $("#pkVerified");
