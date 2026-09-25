@@ -49,7 +49,7 @@ body{
   background:var(--bg);
   color:var(--ink);
   -webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
+  overflow-x:auto;
 }
 h1,h2,h3,h4{margin:0;font-weight:700;letter-spacing:-0.01em;}
 p{margin:0;}
@@ -324,12 +324,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .sub-item-card .details{font-size:12.3px;color:var(--ink-soft);margin-top:3px;}
 
 /* ---------------- Phase progress stepper (compact, on cards) ---------------- */
-.stage-track{display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;
-  scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;}
-.stage-track::-webkit-scrollbar{height:6px;}
-.stage-track::-webkit-scrollbar-track{background:transparent;}
-.stage-track::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;}
-.stage-track::-webkit-scrollbar-thumb:hover{background:var(--ink-mute);}
+.stage-track{display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow:visible;}
 .stage-step{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9px;font-weight:700;
   color:var(--ink-mute);min-width:56px;flex-shrink:0;text-align:center;}
 .stage-step .i{font-size:14px;width:26px;height:26px;border-radius:50%;background:var(--surface-2);
