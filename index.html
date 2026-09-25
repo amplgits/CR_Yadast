@@ -2540,7 +2540,7 @@ PAGES.phaseDetail = function (phaseId) {
     '<button class="tab-btn' + (f === "completed" ? " active" : "") + '" data-pk-filter="completed">Completed <span class="muted">' + counts.paid + '</span></button>' +
     '<button class="tab-btn' + (f === "escalated" ? " active" : "") + '" data-pk-filter="escalated">Escalated <span class="muted">' + counts.escalated + '</span></button>' +
     '</div>' +
-    (f === "jump" ? '<div class="mb-16"><span class="badge badge-brand">Khata ' + escapeHtml(STATE.phaseJumpKhataNumber || "") + '</span> <button class="btn btn-ghost btn-sm" id="btnClearJump" style="margin-left:8px;">Show all</button></div>' : '') +
+    (f === "jump" ? '<div class="mb-16 flex items-center gap-8"><span class="badge badge-brand">Khata ' + escapeHtml(STATE.phaseJumpKhataNumber || "") + '</span><button class="btn btn-ghost btn-sm" id="btnClearJump" title="Clear filter — show all khatas" aria-label="Clear filter" style="padding:5px 9px;font-size:15px;line-height:1;">&times;</button></div>' : '') +
 
     (filtered.length
       ? '<div class="grid-cards">' + filtered.map(PAGES.pkCardHtml).join("") + "</div>"
