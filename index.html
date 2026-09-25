@@ -324,7 +324,12 @@ nav.bottomnav a.active{color:var(--brand-2);}
 .sub-item-card .details{font-size:12.3px;color:var(--ink-soft);margin-top:3px;}
 
 /* ---------------- Phase progress stepper (compact, on cards) ---------------- */
-.stage-track{display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow-x:auto;}
+.stage-track{display:flex;align-items:flex-start;gap:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;
+  scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;}
+.stage-track::-webkit-scrollbar{height:6px;}
+.stage-track::-webkit-scrollbar-track{background:transparent;}
+.stage-track::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;}
+.stage-track::-webkit-scrollbar-thumb:hover{background:var(--ink-mute);}
 .stage-step{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9px;font-weight:700;
   color:var(--ink-mute);min-width:56px;flex-shrink:0;text-align:center;}
 .stage-step .i{font-size:14px;width:26px;height:26px;border-radius:50%;background:var(--surface-2);
@@ -904,6 +909,22 @@ function noticeDocList(pk) {
   const map = (pk && pk.noticeDocuments) || {};
   return Object.keys(map).map(function (id) { return Object.assign({ id: id }, map[id]); })
     .sort(function (a, b) { return (a.uploadedAt || 0) - (b.uploadedAt || 0); });
+}
+
+/* Given a per-type object (e.g. pk.noticeServedByType) and the list of
+   notice types actually present on this khata, returns the LATEST
+   timestamp among types that have reached that milestone - that's
+   when the khata as a WHOLE crossed it, since every type must be done
+   for the aggregate flag (v.noticeServed / v.documentsVerified /
+   v.compensationReceived) to be true. Returns null if none reached it. */
+function latestTypeDateAcrossTypes(byTypeObj, typesPresent, dateKey, doneFlagKey) {
+  if (!typesPresent || !typesPresent.length) return null;
+  let latest = null;
+  typesPresent.forEach(function (type) {
+    const entry = (byTypeObj && byTypeObj[type]) || {};
+    if (entry[doneFlagKey] && entry[dateKey] && (!latest || entry[dateKey] > latest)) latest = entry[dateKey];
+  });
+  return latest;
 }
 
 /* A document's categories: which of Land/Structure/Tree/Block it counts
@@ -1570,8 +1591,14 @@ const DATA = {
     const noticeServed = noticeTypesPresent.length > 0 && noticeTypesPresent.every(function (t) {
       return !!(noticeServedByType[t] && noticeServedByType[t].served);
     });
-    const documentsVerified = !!pk.documentsVerified;
-    const compensationReceived = !!pk.compensationReceived;
+    const documentsVerifiedByType = pk.documentsVerifiedByType || {};
+    const documentsVerified = noticeTypesPresent.length > 0 && noticeTypesPresent.every(function (t) {
+      return !!(documentsVerifiedByType[t] && documentsVerifiedByType[t].verified);
+    });
+    const compensationReceivedByType = pk.compensationReceivedByType || {};
+    const compensationReceived = noticeTypesPresent.length > 0 && noticeTypesPresent.every(function (t) {
+      return !!(compensationReceivedByType[t] && compensationReceivedByType[t].received);
+    });
 
     let stageIndex;
     if (compensationReceived) stageIndex = 4;
@@ -1590,6 +1617,7 @@ const DATA = {
       docsCollected: docsCollected, noticeServed: noticeServed,
       noticeTypesPresent: noticeTypesPresent, noticeServedByType: noticeServedByType,
       documentsVerified: documentsVerified, compensationReceived: compensationReceived,
+      documentsVerifiedByType: documentsVerifiedByType, compensationReceivedByType: compensationReceivedByType,
       stageIndex: stageIndex, stageLabel: stageLabels[stageIndex],
       hasEscalation: !!(pk.escalation && pk.escalation.remarks),
     };
@@ -2875,8 +2903,52 @@ const PKModal = {
       return '<div class="check-row">' + dot +
         '<input type="checkbox" data-notice-served-type="' + type + '"' + (served ? " checked" : "") + (disabled ? " disabled" : "") + '>' +
         '<label>' + type + ' notice served' + (!CAN.fullControl() ? '<span class="hint">Only a Verifier or Admin can toggle this</span>' : '') + '</label></div>' +
-        (served ? '<div class="text-sm text-mute" style="margin:-8px 0 8px 29px;">Marked served on <b>' + fmtDMY(entry.servedAt) + '</b></div>' : '') +
-        '<div class="field" style="margin:0 0 14px 29px;"><label>' + type + ' remarks</label><textarea rows="2" data-notice-remarks-type="' + type + '" placeholder="Remarks for ' + type + ' notice (optional)"' + (disabled ? " disabled" : "") + '>' + escapeHtml(entry.remarks || "") + '</textarea></div>';
+        (served ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Marked served on <b>' + fmtDMY(entry.servedAt) + '</b></div>' : '');
+    }).join("");
+  },
+
+    documentsVerifiedCheckboxesHtml: function (v) {
+    if (!v.noticeTypesPresent.length) {
+      return '<div class="text-sm text-mute mb-16">Upload a notice document above first.</div>';
+    }
+    const TYPE_COLOR = { Land: "#4338CA", Structure: "#B45309", Tree: "#047857" };
+    return v.noticeTypesPresent.map(function (type) {
+      const entry = v.documentsVerifiedByType[type] || {};
+      const verified = !!entry.verified;
+      const noticeOk = !!(v.noticeServedByType[type] && v.noticeServedByType[type].served);
+      const disabled = !CAN.fullControl() || (!noticeOk && !verified);
+      const dot = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (verified ? TYPE_COLOR[type] : "var(--border-strong)") + ';margin-right:8px;flex-shrink:0;"></span>';
+      const hint = (!noticeOk && !verified)
+        ? '<span class="hint">Needs ' + type + ' notice served first</span>'
+        : (!CAN.fullControl()
+            ? '<span class="hint">Only a Verifier or Admin can toggle this</span>'
+            : (!v.docsCollected && !verified ? '<span class="hint">No documents uploaded - remarks required</span>' : ''));
+      return '<div class="check-row">' + dot +
+        '<input type="checkbox" data-doc-verified-type="' + type + '"' + (verified ? " checked" : "") + (disabled ? " disabled" : "") + '>' +
+        '<label>' + type + ' documents verified' + hint + '</label></div>' +
+        (verified ? '<div class="text-sm text-mute" style="margin:-8px 0 8px 29px;">Verified on <b>' + fmtDMY(entry.verifiedAt) + '</b></div>' : '') +
+        '<div class="field" style="margin:0 0 14px 29px;"><label>' + type + ' verification remarks</label><textarea rows="2" data-doc-remarks-type="' + type + '" placeholder="Remarks for ' + type + ' documents (required if none uploaded)"' + (disabled ? " disabled" : "") + '>' + escapeHtml(entry.remarks || "") + '</textarea></div>';
+    }).join("");
+  },
+
+  compensationCheckboxesHtml: function (v) {
+    if (!v.noticeTypesPresent.length) {
+      return '<div class="text-sm text-mute mb-16">No notice types uploaded yet.</div>';
+    }
+    const TYPE_COLOR = { Land: "#4338CA", Structure: "#B45309", Tree: "#047857" };
+    return v.noticeTypesPresent.map(function (type) {
+      const entry = v.compensationReceivedByType[type] || {};
+      const received = !!entry.received;
+      const verifiedOk = !!(v.documentsVerifiedByType[type] && v.documentsVerifiedByType[type].verified);
+      const disabled = !CAN.fullControl() || (!verifiedOk && !received);
+      const dot = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (received ? TYPE_COLOR[type] : "var(--border-strong)") + ';margin-right:8px;flex-shrink:0;"></span>';
+      const hint = (!verifiedOk && !received)
+        ? '<span class="hint">Needs ' + type + ' documents verified first</span>'
+        : (!CAN.fullControl() ? '<span class="hint">Only a Verifier or Admin can toggle this</span>' : '');
+      return '<div class="check-row">' + dot +
+        '<input type="checkbox" data-comp-received-type="' + type + '"' + (received ? " checked" : "") + (disabled ? " disabled" : "") + '>' +
+        '<label>' + type + ' compensation received' + hint + '</label></div>' +
+        (received ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Received on <b>' + fmtDMY(entry.receivedAt) + '</b></div>' : '');
     }).join("");
   },
 
@@ -2944,7 +3016,6 @@ const PKModal = {
     const v = DATA.pkView(Object.assign({ id: PKModal.currentId }, pk));
     const esc = pk.escalation || null;
     const khataId = pk.khataId;
-    const readyForVerify = v.noticeServed;
 
     const noticeList = noticeDocList(pk);
     const noticeDoc = noticeList.length ? noticeList[0] : null; // truthy = at least one notice exists (used by the "Notice served" checkbox below)
@@ -2962,25 +3033,13 @@ const PKModal = {
       '<div class="flex items-center gap-8" style="flex-wrap:wrap;">' +
       '<span class="badge ' + (v.docsCollected ? "badge-green" : "badge-amber") + '">' + (v.docsCollected ? "Collected" : "Pending") + '</span>' +
       '<a href="#/khata/' + khataId + '/documents" id="pkGoDocs" class="btn btn-ghost btn-sm"><i class="icon-folder i"></i>Manage documents</a>' +
-      '</div></div>';
+      '</div></div>' +
 
-    if (CAN.fullControl()) {
-      html +=
-        '<div class="check-row"><input type="checkbox" id="pkVerified"' + (v.documentsVerified ? " checked" : "") + (!readyForVerify && !v.documentsVerified ? " disabled" : "") + '>' +
-        '<label for="pkVerified">Documents verified' + (!readyForVerify && !v.documentsVerified ? '<span class="hint">Needs notice served first</span>' : (!v.docsCollected && !v.documentsVerified ? '<span class="hint">No documents uploaded - remarks will be required</span>' : '')) + '</label></div>' +
-        (!v.documentsVerified && !v.docsCollected && readyForVerify
-          ? '<div class="field" id="pkVerifyRemarksField" style="display:none;margin:-4px 0 14px 29px;"><label>Remarks (required to verify without documents)</label><textarea id="pkVerifyRemarks" rows="2" placeholder="Why is verification done without documents?"></textarea></div>'
-          : '') +
-        (v.documentsVerified ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Verified on <b>' + fmtDMY(pk.documentsVerifiedAt) + '</b>' + (pk.documentsVerifiedRemarks ? '<br>Remarks: ' + escapeHtml(pk.documentsVerifiedRemarks) : '') + '</div>' : '') +
-        '<div class="check-row"><input type="checkbox" id="pkPaid"' + (v.compensationReceived ? " checked" : "") + (!v.documentsVerified && !v.compensationReceived ? " disabled" : "") + '>' +
-        '<label for="pkPaid">Compensation received' + (!v.documentsVerified && !v.compensationReceived ? '<span class="hint">Needs documents verified first</span>' : '') + '</label></div>' +
-        (v.compensationReceived ? '<div class="text-sm text-mute" style="margin:-8px 0 14px 29px;">Received on <b>' + fmtDMY(pk.compensationReceivedAt) + '</b></div>' : '');
-    } else {
-      html += '<div class="deflist mt-8 mb-16">' +
-        PAGES.defItem("Documents Verification", v.documentsVerified ? "Yes (" + fmtDMY(pk.documentsVerifiedAt) + ")" : "Pending") +
-        PAGES.defItem("Compensation", v.compensationReceived ? "Received (" + fmtDMY(pk.compensationReceivedAt) + ")" : "Pending") +
-        '</div>';
-    }
+      '<div class="field mb-0"><label>Documents verified</label></div>' +
+      PKModal.documentsVerifiedCheckboxesHtml(v) +
+
+      '<div class="field mb-0 mt-8"><label>Compensation received</label></div>' +
+      PKModal.compensationCheckboxesHtml(v);
 
     html += (v.compensationReceived
       ? '<div class="btn-row" style="justify-content:flex-start;margin:4px 0 18px;"><button class="btn btn-primary btn-sm" id="btnDownloadReport"><i class="icon-file-down i"></i>Download Report (PDF)</button></div>'
@@ -3150,14 +3209,12 @@ const PKModal = {
         const val = cb.checked;
         const pkId = PKModal.currentId;
         const pk = STATE.phaseKhatas[pkId];
-        const remarksBox = $('[data-notice-remarks-type="' + type + '"]');
-        const remarks = remarksBox ? remarksBox.value.trim() : "";
         pk.noticeServedByType = pk.noticeServedByType || {};
         const prevEntry = pk.noticeServedByType[type];
-        pk.noticeServedByType[type] = { served: val, servedAt: val ? Date.now() : null, servedBy: val ? (STATE.userId || "Public User") : null, remarks: remarks || null };
+        pk.noticeServedByType[type] = { served: val, servedAt: val ? Date.now() : null, servedBy: val ? (STATE.userId || "Public User") : null, remarks: null };
         Router.render(); PKModal.render();
         showToast(type + (val ? " notice marked as served." : " notice mark removed."), "success");
-        API.post("setNoticeServedByType", { phaseKhataId: pkId, noticeType: type, value: val, remarks: remarks })
+        API.post("setNoticeServedByType", { phaseKhataId: pkId, noticeType: type, value: val })
           .then(function () { DATA.refreshQuietly(); })
           .catch(function (err) {
             pk.noticeServedByType[type] = prevEntry;
@@ -3167,18 +3224,54 @@ const PKModal = {
       });
     });
 
-    $all("[data-notice-remarks-type]").forEach(function (box) {
-      if (box.disabled) return;
-      box.addEventListener("change", function () {
-        const type = box.getAttribute("data-notice-remarks-type");
+    $all("[data-doc-verified-type]").forEach(function (cb) {
+      if (cb.disabled) return;
+      cb.addEventListener("change", function () {
+        if (!CAN.fullControl()) { cb.checked = !cb.checked; return; }
+        const type = cb.getAttribute("data-doc-verified-type");
+        const val = cb.checked;
         const pkId = PKModal.currentId;
         const pk = STATE.phaseKhatas[pkId];
-        const entry = (pk.noticeServedByType && pk.noticeServedByType[type]) || {};
-        if (!entry.served) return; // nothing to save until this type is actually marked served
+        const view = DATA.pkView(Object.assign({ id: pkId }, pk));
+        const remarksBox = $('[data-doc-remarks-type="' + type + '"]');
+        const remarks = remarksBox ? remarksBox.value.trim() : "";
+        if (val && !view.docsCollected && !remarks) {
+          showToast("No documents uploaded - enter " + type + " remarks, then tick again.", "error");
+          cb.checked = false;
+          if (remarksBox) remarksBox.focus();
+          return;
+        }
+        pk.documentsVerifiedByType = pk.documentsVerifiedByType || {};
+        pk.compensationReceivedByType = pk.compensationReceivedByType || {};
+        const prevEntry = pk.documentsVerifiedByType[type];
+        const prevComp = pk.compensationReceivedByType[type];
+        pk.documentsVerifiedByType[type] = { verified: val, verifiedAt: val ? Date.now() : null, verifiedBy: val ? (STATE.userId || "Public User") : null, remarks: (val && remarks) ? remarks : null };
+        if (!val) pk.compensationReceivedByType[type] = { received: false, receivedAt: null, receivedBy: null };
+        Router.render(); PKModal.render();
+        showToast(type + (val ? " documents marked verified." : " verification removed."), "success");
+        API.post("setDocumentsVerifiedByType", { phaseKhataId: pkId, noticeType: type, value: val, remarks: remarks })
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            pk.documentsVerifiedByType[type] = prevEntry;
+            pk.compensationReceivedByType[type] = prevComp;
+            Router.render(); PKModal.render();
+            showToast(err.message || "Could not update", "error");
+          });
+      });
+    });
+
+    $all("[data-doc-remarks-type]").forEach(function (box) {
+      if (box.disabled) return;
+      box.addEventListener("change", function () {
+        const type = box.getAttribute("data-doc-remarks-type");
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        const entry = (pk.documentsVerifiedByType && pk.documentsVerifiedByType[type]) || {};
+        if (!entry.verified) return;
         const remarks = box.value.trim();
         const prevRemarks = entry.remarks;
         entry.remarks = remarks || null;
-        API.post("setNoticeServedByType", { phaseKhataId: pkId, noticeType: type, value: true, remarks: remarks })
+        API.post("setDocumentsVerifiedByType", { phaseKhataId: pkId, noticeType: type, value: true, remarks: remarks })
           .then(function () { DATA.refreshQuietly(); showToast(type + " remarks saved.", "success"); })
           .catch(function (err) {
             entry.remarks = prevRemarks;
@@ -3188,59 +3281,30 @@ const PKModal = {
       });
     });
 
-        const verifiedCb = $("#pkVerified");
-    if (verifiedCb) verifiedCb.addEventListener("change", function () {
-      const val = verifiedCb.checked;
-      const pkId = PKModal.currentId;
-      const pk = STATE.phaseKhatas[pkId];
-      const view = DATA.pkView(Object.assign({ id: pkId }, pk));
-
-      // No documents uploaded -> remarks are mandatory
-      let remarks = "";
-      if (val && !view.docsCollected) {
-        const field = $("#pkVerifyRemarksField"), box = $("#pkVerifyRemarks");
-        remarks = box ? box.value.trim() : "";
-        if (!remarks) {
-          verifiedCb.checked = false;
-          if (field) field.style.display = "";
-          if (box) box.focus();
-          showToast("No documents uploaded - enter remarks, then tick again.", "error");
-          return;
-        }
-      }
-
-      const prevVerified = pk.documentsVerified, prevPaid = pk.compensationReceived, prevRemarks = pk.documentsVerifiedRemarks;
-      pk.documentsVerified = val;
-      pk.documentsVerifiedRemarks = (val && remarks) ? remarks : null;
-      if (!val) pk.compensationReceived = false;
-      Router.render(); PKModal.render();
-      showToast(val ? "Documents marked verified." : "Verification removed.", "success");
-      API.post("setDocumentsVerified", { phaseKhataId: pkId, value: val, remarks: remarks })
-        .then(function () { DATA.refreshQuietly(); })
-        .catch(function (err) {
-          pk.documentsVerified = prevVerified; pk.compensationReceived = prevPaid; pk.documentsVerifiedRemarks = prevRemarks;
-          Router.render(); PKModal.render();
-          showToast(err.message || "Could not update", "error");
-        });
+    $all("[data-comp-received-type]").forEach(function (cb) {
+      if (cb.disabled) return;
+      cb.addEventListener("change", function () {
+        if (!CAN.fullControl()) { cb.checked = !cb.checked; return; }
+        const type = cb.getAttribute("data-comp-received-type");
+        const val = cb.checked;
+        const pkId = PKModal.currentId;
+        const pk = STATE.phaseKhatas[pkId];
+        pk.compensationReceivedByType = pk.compensationReceivedByType || {};
+        const prevEntry = pk.compensationReceivedByType[type];
+        pk.compensationReceivedByType[type] = { received: val, receivedAt: val ? Date.now() : null, receivedBy: val ? (STATE.userId || "Public User") : null };
+        Router.render(); PKModal.render();
+        showToast(type + (val ? " compensation marked received." : " compensation mark removed."), "success");
+        API.post("setCompensationReceivedByType", { phaseKhataId: pkId, noticeType: type, value: val })
+          .then(function () { DATA.refreshQuietly(); })
+          .catch(function (err) {
+            pk.compensationReceivedByType[type] = prevEntry;
+            Router.render(); PKModal.render();
+            showToast(err.message || "Could not update", "error");
+          });
+      });
     });
 
-    const paidCb = $("#pkPaid");
-    if (paidCb) paidCb.addEventListener("change", function () {
-      const val = paidCb.checked;
-      const pkId = PKModal.currentId;
-      const pk = STATE.phaseKhatas[pkId];
-      const prev = pk.compensationReceived;
-      pk.compensationReceived = val;
-      Router.render(); PKModal.render();
-      showToast(val ? "Compensation marked received." : "Compensation mark removed.", "success");
-      API.post("setCompensationReceived", { phaseKhataId: pkId, value: val })
-        .then(function () { DATA.refreshQuietly(); })
-        .catch(function (err) {
-          pk.compensationReceived = prev;
-          Router.render(); PKModal.render();
-          showToast(err.message || "Could not update", "error");
-        });
-    });
+
 
     $("#btnSaveEscalation").addEventListener("click", function () {
       const remarks = $("#pkEscalationText").value.trim();
@@ -3606,12 +3670,14 @@ const ReportPDF = {
     });
     y = table(y, ["Document Type", "Status"], docRows, [pageW - M * 2 - 130, 130]);
 
-    /* ---------------- VERIFICATION REMARKS (shown when docs were
-       incomplete/missing but verification was still done — makes the
-       exception impossible to miss on the printed report) ---------------- */
-    if (pk.documentsVerifiedRemarks) {
+    /* ---------------- VERIFICATION REMARKS (per notice type - shown
+       when docs were incomplete/missing but verification was still
+       done for that type — makes the exception impossible to miss) ---------------- */
+    v.noticeTypesPresent.forEach(function (type) {
+      const dv = (pk.documentsVerifiedByType && pk.documentsVerifiedByType[type]) || {};
+      if (!dv.remarks) return;
       const amber = [180, 83, 9], amberBg = [255, 251, 235], amberBorder = [253, 230, 138];
-      const remarkLines = doc.splitTextToSize(String(pk.documentsVerifiedRemarks), pageW - M * 2 - 24);
+      const remarkLines = doc.splitTextToSize(String(dv.remarks), pageW - M * 2 - 24);
       const remarkH = 34 + remarkLines.length * 12;
       y = ensureSpace(y, remarkH + 16);
       doc.setFillColor(amberBg[0], amberBg[1], amberBg[2]);
@@ -3620,21 +3686,52 @@ const ReportPDF = {
       doc.roundedRect(M, y, pageW - M * 2, remarkH, 6, 6, "FD");
       doc.setFont("helvetica", "bold"); doc.setFontSize(10);
       doc.setTextColor(amber[0], amber[1], amber[2]);
-      doc.text("\u26A0 Verification Remarks (documents incomplete)", M + 12, y + 20);
+      doc.text("\u26A0 " + type + " Verification Remarks (documents incomplete)", M + 12, y + 20);
       doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
       doc.setTextColor(ink[0], ink[1], ink[2]);
       doc.text(remarkLines, M + 12, y + 36);
       y += remarkH + 16;
+    });
+
+        /* ---------------- NOTICE TYPE BREAKDOWN (Land/Structure/Tree each
+       tracked independently, so show each one's own status here) ---------------- */
+    if (v.noticeTypesPresent.length) {
+      y = sectionTitle(y, "Notice, Verification & Compensation by Type");
+      y = table(y, ["Type", "Notice Served", "Documents Verified", "Compensation Received"],
+        v.noticeTypesPresent.map(function (type) {
+          const ns = (pk.noticeServedByType && pk.noticeServedByType[type]) || {};
+          const dv = (pk.documentsVerifiedByType && pk.documentsVerifiedByType[type]) || {};
+          const cr = (pk.compensationReceivedByType && pk.compensationReceivedByType[type]) || {};
+          return [
+            type,
+            ns.served ? "Yes (" + fmtDMY(ns.servedAt) + ")" : "Pending",
+            dv.verified ? "Yes (" + fmtDMY(dv.verifiedAt) + ")" : "Pending",
+            cr.received ? "Yes (" + fmtDMY(cr.receivedAt) + ")" : "Pending",
+          ];
+        }),
+        [110, 140, 150, 150]);
     }
 
     /* ---------------- PROGRESS TIMELINE ---------------- */
     y = sectionTitle(y, "Progress Timeline");
     y = ensureSpace(y, 90);
+    // The overall (all-types) stage is only "done" once every uploaded notice
+    // type reaches that stage; its date is the LATEST date among those types,
+    // since that's when the khata as a whole actually crossed the milestone.
+    const latestTypeDate = function (byTypeObj, dateKey, doneFlagKey) {
+      if (!v.noticeTypesPresent.length) return null;
+      let latest = null;
+      v.noticeTypesPresent.forEach(function (type) {
+        const entry = (byTypeObj && byTypeObj[type]) || {};
+        if (entry[doneFlagKey] && entry[dateKey] && (!latest || entry[dateKey] > latest)) latest = entry[dateKey];
+      });
+      return latest;
+    };
     const stages = [
       { label: "Enlisted", date: pk.enlistedAt, done: true },
-      { label: "Notice Served", date: pk.noticeServedAt, done: v.noticeServed },
-      { label: "Documents Verified", date: pk.documentsVerifiedAt, done: v.documentsVerified },
-      { label: "Compensation Received", date: pk.compensationReceivedAt, done: v.compensationReceived },
+      { label: "Notice Served", date: latestTypeDate(pk.noticeServedByType, "servedAt", "served"), done: v.noticeServed },
+      { label: "Documents Verified", date: latestTypeDate(pk.documentsVerifiedByType, "verifiedAt", "verified"), done: v.documentsVerified },
+      { label: "Compensation Received", date: latestTypeDate(pk.compensationReceivedByType, "receivedAt", "received"), done: v.compensationReceived },
     ];
     const marginX = M + 25, usableW = pageW - marginX * 2 - M + 15, stepW = usableW / (stages.length - 1), cy = y + 20;
     doc.setLineWidth(2.5); doc.setDrawColor(money[0], money[1], money[2]);
@@ -3766,6 +3863,7 @@ const XLREPORT = {
       { key: "remarks", h: "Verification Remarks", w: 30, g: G5, t: "text" },
       { key: "received", h: "Compensation Received", w: 14, g: G5, t: "yn", c: true, count: true },
       { key: "receivedOn", h: "Received On", w: 13, g: G5, t: "date", c: true },
+      { key: "typeStatus", h: "Status by Type (Land/Structure/Tree)", w: 46, g: G5, t: "text" },
     ];
     if (showComp) {
       cols.push(
@@ -3853,14 +3951,32 @@ const XLREPORT = {
       trees: trees,
       nLand: noticeDates("Land"), nStructure: noticeDates("Structure"), nTree: noticeDates("Tree"), nBlock: noticeDates("Block"),
       noticeServed: v.noticeServed ? "Yes" : "No",
-      noticeOn: v.noticeServed ? toDate(pk.noticeServedAt) : dash,
+      noticeOn: v.noticeServed ? toDate(latestTypeDateAcrossTypes(pk.noticeServedByType, v.noticeTypesPresent, "servedAt", "served")) : dash,
       docCount: docCount,
       docStatus: v.docsCollected ? "Collected" : "Pending",
       verified: v.documentsVerified ? "Yes" : "No",
-      verifiedOn: v.documentsVerified ? toDate(pk.documentsVerifiedAt) : dash,
-      remarks: pk.documentsVerifiedRemarks || dash,
+      verifiedOn: v.documentsVerified ? toDate(latestTypeDateAcrossTypes(pk.documentsVerifiedByType, v.noticeTypesPresent, "verifiedAt", "verified")) : dash,
+      remarks: (function () {
+        const parts = [];
+        v.noticeTypesPresent.forEach(function (type) {
+          const dv = (pk.documentsVerifiedByType && pk.documentsVerifiedByType[type]) || {};
+          if (dv.remarks) parts.push(type + ": " + dv.remarks);
+        });
+        return parts.length ? parts.join(" | ") : dash;
+      })(),
       received: v.compensationReceived ? "Yes" : "No",
-      receivedOn: v.compensationReceived ? toDate(pk.compensationReceivedAt) : dash,
+      receivedOn: v.compensationReceived ? toDate(latestTypeDateAcrossTypes(pk.compensationReceivedByType, v.noticeTypesPresent, "receivedAt", "received")) : dash,
+      typeStatus: (function () {
+        if (!v.noticeTypesPresent.length) return dash;
+        return v.noticeTypesPresent.map(function (type) {
+          const ns = (pk.noticeServedByType && pk.noticeServedByType[type]) || {};
+          const dv = (pk.documentsVerifiedByType && pk.documentsVerifiedByType[type]) || {};
+          const cr = (pk.compensationReceivedByType && pk.compensationReceivedByType[type]) || {};
+          return type + ": Notice " + (ns.served ? "\u2713" : "Pending") +
+            ", Docs " + (dv.verified ? "\u2713" : "Pending") +
+            ", Comp " + (cr.received ? "\u2713" : "Pending");
+        }).join(" | ");
+      })(),
       stage: v.stageLabel,
       progress: v.stageIndex / 4,
       enlistedOn: toDate(pk.enlistedAt),
