@@ -818,7 +818,7 @@ nav.bottomnav a.active{color:var(--brand-2);}
   <div class="modal" style="max-width:540px;">
     <div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-list-plus i"></i></div>
     <h2>Enlist khatas</h2>
-    <p class="modal-sub">Select khatas to add to this phase. Already-enlisted khatas are hidden from this list.</p>
+    <p class="modal-sub">Select khatas to add to this phase. Khatas already enlisted in any phase are hidden, since a khata can belong to only one phase.</p>
     <div class="field" style="margin-bottom:8px;"><input type="text" id="enlistSearchInput" placeholder="Search RT name, khata number or block&hellip;"></div>
     <div id="enlistKhataList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;"></div>
     <div class="btn-row" style="justify-content:space-between;">
@@ -2806,7 +2806,21 @@ const EnlistModal = {
   close: function () { $("#enlistKhataModal").classList.remove("open"); },
 
   availableKhatas: function () {
-    const enlisted = DATA.enlistedKhataIdsForPhase(EnlistModal.phaseId);
+    // A khata already enlisted in ANY phase (not just this one) must not appear here.
+    const enlistedIds = {};
+    const enlistedNumbers = {};
+    Object.keys(STATE.phaseKhatas).forEach(function (pkId) {
+      const pk = STATE.phaseKhatas[pkId];
+      const group = Array.isArray(pk.khataIds) && pk.khataIds.length ? pk.khataIds : [pk.khataId];
+      group.forEach(function (kid) {
+        enlistedIds[kid] = true;
+        const kk = STATE.khatas[kid];
+        const n = kk ? String(kk.khataNumber || "").trim() : "";
+        if (n) enlistedNumbers[n] = true;
+      });
+      if (pk.khataNumber) enlistedNumbers[String(pk.khataNumber).trim()] = true;
+    });
+
     const byNumber = {};
     DATA.khataList().forEach(function (k) {
       const num = String(k.khataNumber || "").trim();
@@ -2817,7 +2831,8 @@ const EnlistModal = {
     const groups = [];
     Object.keys(byNumber).forEach(function (num) {
       const members = byNumber[num];
-      if (members.some(function (k) { return enlisted[k.id]; })) return; // whole group already enlisted
+      if (enlistedNumbers[num]) return; // enlisted in some phase already
+      if (members.some(function (k) { return enlistedIds[k.id]; })) return;
       const rep = Object.assign({}, members[0]);
       rep.groupBlockNames = Array.from(new Set(members.map(function (k) {
         return (STATE.blocks[k.blockId] || {}).blockName;
@@ -2843,7 +2858,7 @@ const EnlistModal = {
       return numOf(a.khataNumber) - numOf(b.khataNumber) || String(a.khataNumber || "").localeCompare(String(b.khataNumber || ""));
     });
     if (!list.length) {
-      host.innerHTML = emptyState("icon-file-search", "No khatas available", "All matching khatas are already enlisted in this phase.");
+      host.innerHTML = emptyState("icon-file-search", "No khatas available", "Every matching khata is already enlisted in a phase.");
       EnlistModal.updateCount();
       return;
     }
