@@ -1623,6 +1623,23 @@ const DATA = {
       return DATA.pkView(Object.assign({ id: id }, STATE.phaseKhatas[id]));
     });
   },
+
+  /* Per notice type (Land/Structure/Tree): how many khatas have that
+  notice uploaded ("issued"), how many are marked served, how many pending. */
+  noticeTypeStats: function (views) {
+    views = views || DATA.allPhaseKhataViews();
+    const out = {};
+    NOTICE_CHECKBOX_TYPES.forEach(function (t) { out[t] = { issued: 0, served: 0, pending: 0 }; });
+    views.forEach(function (v) {
+      v.noticeTypesPresent.forEach(function (t) {
+        out[t].issued++;
+        if (v.noticeServedByType[t] && v.noticeServedByType[t].served) out[t].served++;
+        else out[t].pending++;
+      });
+    });
+    return out;
+  },
+
 };
 
 /* ============================================================
@@ -1935,6 +1952,48 @@ PAGES.animateKpiCounters = function () {
   });
 };
 
+PAGES.noticeTypeCardHtml = function () {
+  const META = {
+    Land:      { icon: "icon-bell-ring", grad: "linear-gradient(135deg,#4338CA,#2563EB)" },
+    Structure: { icon: "icon-home",      grad: "linear-gradient(135deg,#B45309,#F59E0B)" },
+    Tree:      { icon: "icon-trees",     grad: "linear-gradient(135deg,#047857,#10B981)" },
+  };
+  const views = DATA.allPhaseKhataViews();
+  const total = DATA.noticeTypeStats(views);
+  const noNotice = views.filter(function (v) { return !v.noticeTypesPresent.length; }).length;
+
+  const cards = NOTICE_CHECKBOX_TYPES.map(function (t) {
+    const s = total[t];
+    return PAGES.kpiCardHtml({
+      icon: META[t].icon, grad: META[t].grad,
+      label: t + " notice served (" + s.issued + " uploaded)",
+      value: s.served + " / " + s.issued,
+    });
+  });
+  cards.push(PAGES.kpiCardHtml({
+    icon: "icon-bell-off", grad: "linear-gradient(135deg,#94A3B8,#64748B)",
+    label: "Khatas with no notice uploaded", value: noNotice,
+  }));
+
+  const badge = function (s, t) {
+    if (!s.issued) return '<span class="badge badge-slate">' + t + ': &mdash;</span>';
+    return '<span class="badge ' + (s.served === s.issued ? "badge-green" : "badge-amber") + '">' + t + ' ' + s.served + '/' + s.issued + '</span>';
+  };
+  const phaseRows = DATA.phaseList().map(function (p) {
+    const st = DATA.noticeTypeStats(DATA.phaseKhataList(p.id).map(DATA.pkView));
+    return '<div class="sub-item-card" data-nav="#/phases/' + p.id + '" style="cursor:pointer;align-items:center;">' +
+      '<div class="name">' + escapeHtml(DATA.phaseDisplayName(p)) + '</div>' +
+      '<div class="flex gap-8" style="flex-wrap:wrap;">' +
+      NOTICE_CHECKBOX_TYPES.map(function (t) { return badge(st[t], t); }).join("") +
+      '</div></div>';
+  }).join("");
+
+  return '<div class="mt-16"></div><div class="card"><div class="section-title">Notice status by type <span class="muted">served / uploaded</span></div>' +
+    '<div class="kpi-grid">' + cards.join("") + '</div>' +
+    (phaseRows ? '<div class="section-title mt-16" style="font-size:14px;">Phase-wise</div>' + phaseRows : '') +
+    '</div>';
+};
+
 PAGES.dashboard = function () {
   if (!STATE.loaded) return skeletonCards(4);
   const k = DATA.blockKPIs();
@@ -1963,6 +2022,7 @@ PAGES.dashboard = function () {
   return (
     '<div class="page-head"><div><h1>RT Compensation Management</h1><p>Manage, review and analyse RT records, khatas, land, structures, trees and documentation.</p></div></div>' +
     '<div class="kpi-grid">' + kpis.map(PAGES.kpiCardHtml).join("") + "</div>" +
+    PAGES.noticeTypeCardHtml() +
     '<div class="mt-16"></div><div class="card"><div class="section-title">Browse by block <span class="muted">' + blockIds.length + ' total</span></div>' +
     PAGES.blockCardsHtml(blockIds.slice(0, 6)) +
     (blockIds.length > 6 ? '<div class="mt-16"><a href="#/blocks" class="btn btn-ghost btn-sm">View all blocks <i class="icon-arrow-right i"></i></a></div>' : "") +
@@ -3849,6 +3909,9 @@ const XLREPORT = {
       { key: "nStructure", h: "Structure Notice Date", w: 15, g: G3, t: "text", c: true },
       { key: "nTree", h: "Tree Notice Date", w: 15, g: G3, t: "text", c: true },
       { key: "nBlock", h: "Block Notice Date", w: 15, g: G3, t: "text", c: true },
+      { key: "sLand", h: "Land Notice Served", w: 20, g: G3, t: "nstatus", c: true, sc: true },
+      { key: "sStructure", h: "Structure Notice Served", w: 20, g: G3, t: "nstatus", c: true, sc: true },
+      { key: "sTree", h: "Tree Notice Served", w: 20, g: G3, t: "nstatus", c: true, sc: true },
       { key: "noticeServed", h: "Notice Served", w: 11, g: G3, t: "yn", c: true, count: true },
       { key: "noticeOn", h: "Notice Served On", w: 13, g: G3, t: "date", c: true },
       { key: "docCount", h: "Documents Uploaded", w: 12, g: G4, t: "int", c: true, sum: true },
@@ -3883,7 +3946,8 @@ const XLREPORT = {
   /* ---------- numbers for a whole phase ---------- */
   phaseStats: function (phase) {
     const views = DATA.phaseKhataList(phase.id).map(DATA.pkView);
-    const s = { views: views, total: views.length, notice: 0, docs: 0, verified: 0, paid: 0, escalated: 0, acquired: 0, comp: 0, disbursed: 0, progress: 0 };
+    const s = { views: views, total: views.length, notice: 0, docs: 0, verified: 0, paid: 0, escalated: 0, acquired: 0, comp: 0, disbursed: 0, progress: 0,
+      byType: DATA.noticeTypeStats(views) };
     let stageSum = 0;
     views.forEach(function (v) {
       if (v.noticeServed) s.notice++;
@@ -3930,6 +3994,11 @@ const XLREPORT = {
     };
     const toDate = function (ts) { return ts ? new Date(ts) : dash; };
 
+    const servedText = function (type) {
+      if (v.noticeTypesPresent.indexOf(type) === -1) return "Not issued";
+      const e = (pk.noticeServedByType && pk.noticeServedByType[type]) || {};
+      return e.served ? (e.servedAt ? "Served (" + fmtDMY(e.servedAt) + ")" : "Served") : "Pending";
+    };
     const docCount = Number(k.docCount) || 0;
     const row = {
       sno: idx,
@@ -3945,6 +4014,7 @@ const XLREPORT = {
       structures: structures,
       trees: trees,
       nLand: noticeDates("Land"), nStructure: noticeDates("Structure"), nTree: noticeDates("Tree"), nBlock: noticeDates("Block"),
+      sLand: servedText("Land"), sStructure: servedText("Structure"), sTree: servedText("Tree"),
       noticeServed: v.noticeServed ? "Yes" : "No",
       noticeOn: v.noticeServed ? toDate(latestTypeDateAcrossTypes(pk.noticeServedByType, v.noticeTypesPresent, "servedAt", "served")) : dash,
       docCount: docCount,
@@ -4029,6 +4099,12 @@ const XLREPORT = {
       else if (val === "Not set") { bg = C.grayBg; fg = C.soft; }
       else { bg = C.greenBg; fg = C.green; bold = true; }
     }
+    else if (t === "nstatus") {
+      const s = String(val);
+      if (s.indexOf("Served") === 0) { bg = C.greenBg; fg = C.green; bold = true; }
+      else if (s === "Pending") { bg = C.amberBg; fg = C.amber; bold = true; }
+      else { bg = C.grayBg; fg = C.mute; }
+    }
     else if (t === "stage") {
       const st = XLREPORT.STAGE_STYLE[val];
       if (st) { bg = st[0]; fg = st[1]; bold = true; }
@@ -4084,6 +4160,9 @@ const XLREPORT = {
     const kpis = [
       { l: "TOTAL KHATAS", v: st.total, f: "0", c: C.brand },
       { l: "NOTICE SERVED", v: st.notice, f: '0" / ' + st.total + '"', c: "FF7C3AED" },
+      { l: "LAND NOTICE SERVED", v: st.byType.Land.served, f: '0" / ' + st.byType.Land.issued + '"', c: "FF4338CA" },
+      { l: "STRUCTURE NOTICE SERVED", v: st.byType.Structure.served, f: '0" / ' + st.byType.Structure.issued + '"', c: "FFB45309" },
+      { l: "TREE NOTICE SERVED", v: st.byType.Tree.served, f: '0" / ' + st.byType.Tree.issued + '"', c: "FF047857" },
       { l: "DOCUMENTS COLLECTED", v: st.docs, f: '0" / ' + st.total + '"', c: "FFB45309" },
       { l: "DOCUMENTS VERIFIED", v: st.verified, f: '0" / ' + st.total + '"', c: "FF0E7490" },
       { l: "COMPENSATION RECEIVED", v: st.paid, f: '0" / ' + st.total + '"', c: C.green },
@@ -4189,6 +4268,9 @@ const XLREPORT = {
         } else if (c.count) {
           cell.value = rows.filter(function (r) { return r[c.key] === "Yes"; }).length;
           cell.numFmt = '0" Yes"';
+        } else if (c.sc) {
+          cell.value = rows.filter(function (r) { return String(r[c.key]).indexOf("Served") === 0; }).length;
+          cell.numFmt = '0" Served"';
         } else if (c.avg) {
           cell.value = rows.reduce(function (s, r) { return s + r[c.key]; }, 0) / rows.length;
           cell.numFmt = "0%";
@@ -4217,6 +4299,9 @@ const XLREPORT = {
       { h: "Phase", w: 36, t: "text", bold: true },
       { h: "Khatas", w: 11, t: "int", c: true, sum: true },
       { h: "Notice Served", w: 14, t: "int", c: true, sum: true },
+      { h: "Land Notice Served", w: 15, t: "int", c: true, sum: true },
+      { h: "Structure Notice Served", w: 17, t: "int", c: true, sum: true },
+      { h: "Tree Notice Served", w: 15, t: "int", c: true, sum: true },
       { h: "Documents Collected", w: 16, t: "int", c: true, sum: true },
       { h: "Documents Verified", w: 16, t: "int", c: true, sum: true },
       { h: "Compensation Received", w: 17, t: "int", c: true, sum: true },
@@ -4252,7 +4337,7 @@ const XLREPORT = {
 
     const data = phases.map(function (p, i) {
       const x = XLREPORT.phaseStats(p);
-      const r = [i + 1, DATA.phaseDisplayName(p), x.total, x.notice, x.docs, x.verified, x.paid, x.escalated, Math.round(x.acquired * 100) / 100];
+      const r = [i + 1, DATA.phaseDisplayName(p), x.total, x.notice, x.byType.Land.served, x.byType.Structure.served, x.byType.Tree.served, x.docs, x.verified, x.paid, x.escalated, Math.round(x.acquired * 100) / 100];
       if (showComp) r.push(x.comp, x.disbursed);
       r.push(x.progress);
       return r;
