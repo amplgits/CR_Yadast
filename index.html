@@ -1209,45 +1209,115 @@ const DocDeleteFX = {
 };
 
 /* ============================================================
-   API
+   API  (robust: request queue + retry with backoff + timeout +
+   duplicate-safe writes)
+   ------------------------------------------------------------
+   - At most MAX_CONCURRENT calls are in flight at once, so a page
+     full of thumbnails can never flood Apps Script (which allows
+     only ~30 simultaneous executions per user).
+   - Thumbnails / images go in a LOW priority lane so uploads and
+     clicks are never stuck behind them.
+   - Transient failures (network error, timeout, non-JSON reply such
+     as Google's 404 "echo" page, backend busy) are retried silently
+     with exponential backoff + jitter.
+   - Every write carries a unique reqId (reused on every retry) so the
+     backend can replay the stored result instead of running the
+     action a second time.
    ============================================================ */
 const API = {
-  MAX_RETRIES: 3,
-  RETRY_DELAY_MS: 500,
+  MAX_RETRIES: 5,
+  BASE_DELAY_MS: 700,
+  MAX_DELAY_MS: 8000,
+  TIMEOUT_MS: 90000,
+  MAX_CONCURRENT: 4,                                  // never more than 4 calls in flight
+  LOW_PRIORITY_ACTIONS: ["documentThumbnail", "documentImage"],
+
+  _active: 0,
+  _high: [],
+  _low: [],
+  _inflight: {},
 
   sleep_: function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); },
 
-  get: function (action, params) {
-    return API.requestWithRetry_(function () {
-      const qs = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
-      return fetch(CONFIG.apiUrl + "?" + qs.toString());
+  /* ---- Request queue: stops 40 thumbnails from flooding Apps Script ---- */
+  schedule_: function (task, low) {
+    return new Promise(function (resolve, reject) {
+      (low ? API._low : API._high).push({ task: task, resolve: resolve, reject: reject });
+      API.pump_();
     });
+  },
+  pump_: function () {
+    while (API._active < API.MAX_CONCURRENT && (API._high.length || API._low.length)) {
+      const job = API._high.length ? API._high.shift() : API._low.shift();
+      API._active++;
+      job.task().then(job.resolve, job.reject).then(function () { API._active--; API.pump_(); });
+    }
+  },
+
+  get: function (action, params, opts) {
+    opts = opts || {};
+    const key = action + "|" + JSON.stringify(params || {});
+    if (API._inflight[key]) return API._inflight[key];      // identical call already running - share it
+    const low = !!opts.low || API.LOW_PRIORITY_ACTIONS.indexOf(action) !== -1;
+    const p = API.requestWithRetry_(function () {
+      const qs = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
+      return API.fetchOnce_(CONFIG.apiUrl + "?" + qs.toString(), { method: "GET", cache: "no-store" });
+    }, { low: low, isPost: false, retries: opts.retries });
+    API._inflight[key] = p;
+    const clear = function () { delete API._inflight[key]; };
+    p.then(clear, clear);
+    return p;
   },
 
   post: function (action, payload) {
+    // One unique id per logical write, reused on every retry, so the
+    // backend can recognise a retry and never run the action twice.
+    const reqId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+    const body = JSON.stringify(Object.assign({ action: action, token: STATE.token, reqId: reqId }, payload || {}));
     return API.requestWithRetry_(function () {
-      return fetch(CONFIG.apiUrl, {
-        method: "POST",
-        body: JSON.stringify(Object.assign({ action: action, token: STATE.token }, payload || {})),
-      });
-    });
+      return API.fetchOnce_(CONFIG.apiUrl, { method: "POST", body: body });
+    }, { low: false, isPost: true });
   },
 
-  requestWithRetry_: function (doFetch) {
+  fetchOnce_: function (url, options) {
+    const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, API.TIMEOUT_MS) : null;
+    const opts = Object.assign({}, options || {}, ctrl ? { signal: ctrl.signal } : {});
+    return fetch(url, opts)
+      .then(API.parseResponse)
+      .catch(function (err) {
+        if (err && err.code) throw err;
+        const e = new Error(err && err.name === "AbortError"
+          ? "The server took too long to respond."
+          : "Network problem - could not reach the server.");
+        e.code = (err && err.name === "AbortError") ? "TIMEOUT" : "NETWORK";
+        throw e;
+      })
+      .finally(function () { if (timer) clearTimeout(timer); });
+  },
+
+  isTransient_: function (err, isPost) {
+    if (!err) return false;
+    const c = err.code;
+    if (c === "BAD_RESPONSE" || c === "NETWORK" || c === "TIMEOUT" || c === "IN_PROGRESS") return true;
+    if (!isPost && c === "INTERNAL_ERROR") return true;     // reads are always safe to repeat
+    return false;
+  },
+
+  requestWithRetry_: function (makeRequest, opts) {
+    const maxRetries = (opts.retries == null) ? API.MAX_RETRIES : opts.retries;
     let attempt = 0;
-    function tryOnce() {
-      return doFetch()
-        .then(API.parseResponse)
-        .catch(function (err) {
-          const isTransient = err.code === "BAD_RESPONSE" || err.name === "TypeError";
-          if (isTransient && attempt < API.MAX_RETRIES) {
-            attempt++;
-            return API.sleep_(API.RETRY_DELAY_MS * attempt).then(tryOnce);
-          }
-          throw err;
-        });
+    function run() {
+      return API.schedule_(makeRequest, opts.low).then(API.unwrap).catch(function (err) {
+        if (attempt < maxRetries && API.isTransient_(err, opts.isPost)) {
+          attempt++;
+          const delay = Math.min(API.MAX_DELAY_MS, API.BASE_DELAY_MS * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 400);
+          return API.sleep_(delay).then(run);              // wait with NO queue slot held
+        }
+        throw err;
+      });
     }
-    return tryOnce().then(API.unwrap);
+    return run();
   },
 
   parseResponse: function (r) {
@@ -1257,9 +1327,8 @@ const API = {
         json = JSON.parse(text);
       } catch (e) {
         const err = new Error(
-          "The server sent back an unexpected response instead of data. " +
-          "This usually means the Apps Script deployment needs to be redeployed " +
-          "(Deploy \u2192 Manage deployments \u2192 Edit \u2192 New version)."
+          "The server returned an unexpected response (it may be busy). Please try again in a moment. " +
+          "If this keeps happening, redeploy the Apps Script (Deploy \u2192 Manage deployments \u2192 Edit \u2192 New version)."
         );
         err.code = "BAD_RESPONSE";
         throw err;
@@ -1507,8 +1576,6 @@ const DATA = {
 
   blockKPIs: function () { return STATE.stats || {}; },
 
-  blockKPIs: function () { return STATE.stats || {}; },
-
   totalCompensation: function () {
     return Object.keys(STATE.compensation).reduce(function (sum, id) {
       return sum + Number(STATE.compensation[id].totalAmount || 0);
@@ -1691,7 +1758,7 @@ const SYNC = {
     if (SYNC.pending) { maybeRefresh(); return; }
 
     SYNC.busyChecking = true;
-    API.get("version", { token: STATE.token }).then(function (d) {
+    API.get("version", { token: STATE.token }, { retries: 0, low: true }).then(function (d) {
       if (SYNC.lastSeen === null) { SYNC.lastSeen = d.v; return; }
       if (d.v !== SYNC.lastSeen) { SYNC.pending = true; SYNC.latest = d.v; maybeRefresh(); }
     }).catch(function (err) {
