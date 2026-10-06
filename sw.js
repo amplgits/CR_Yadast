@@ -2,7 +2,7 @@
 // Caches the app shell only. Every Apps Script / cross-origin request is
 // left completely alone and always goes live to the network.
 
-const CACHE_NAME = "rtcms-shell-v4"; // bump this number every time you deploy a new index.html
+const CACHE_NAME = "rtcms-shell-v5"; // bump this number every time you deploy a new index.html
 const SHELL_FILES = ["./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
