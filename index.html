@@ -1225,43 +1225,74 @@ const DocDeleteFX = {
      action a second time.
    ============================================================ */
 const API = {
-  MAX_RETRIES: 5,
-  BASE_DELAY_MS: 700,
-  MAX_DELAY_MS: 8000,
-  TIMEOUT_MS: 90000,
-  MAX_CONCURRENT: 4,                                  // never more than 4 calls in flight
+  MAX_RETRIES: 6,
+  BASE_DELAY_MS: 800,
+  MAX_DELAY_MS: 10000,
+  GET_TIMEOUT_MS: 30000,        // hung call? give up fast and retry (cold start usually succeeds on retry)
+  BOOTSTRAP_TIMEOUT_MS: 60000,
+  POST_TIMEOUT_MS: 120000,      // uploads; safe to retry because of reqId de-duplication
+  MAX_CONCURRENT: 5,
+  MAX_LOW_CONCURRENT: 2,        // thumbnails can never use more than 2 slots
   LOW_PRIORITY_ACTIONS: ["documentThumbnail", "documentImage"],
 
   _active: 0,
+  _activeLow: 0,
   _high: [],
   _low: [],
   _inflight: {},
 
   sleep_: function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); },
 
-  /* ---- Request queue: stops 40 thumbnails from flooding Apps Script ---- */
+  /* Wait until the device is online AND the tab is visible (max 60s). */
+  waitUntilReady_: function () {
+    return new Promise(function (resolve) {
+      function ready() { return navigator.onLine !== false && !document.hidden; }
+      if (ready()) return resolve();
+      let t;
+      function cleanup() {
+        clearTimeout(t);
+        window.removeEventListener("online", done);
+        document.removeEventListener("visibilitychange", done);
+      }
+      function done() { if (!ready()) return; cleanup(); resolve(); }
+      t = setTimeout(function () { cleanup(); resolve(); }, 60000);
+      window.addEventListener("online", done);
+      document.addEventListener("visibilitychange", done);
+    });
+  },
+
   schedule_: function (task, low) {
     return new Promise(function (resolve, reject) {
       (low ? API._low : API._high).push({ task: task, resolve: resolve, reject: reject });
       API.pump_();
     });
   },
+
   pump_: function () {
-    while (API._active < API.MAX_CONCURRENT && (API._high.length || API._low.length)) {
-      const job = API._high.length ? API._high.shift() : API._low.shift();
-      API._active++;
-      job.task().then(job.resolve, job.reject).then(function () { API._active--; API.pump_(); });
+    while (API._active < API.MAX_CONCURRENT) {
+      let job = null, isLow = false;
+      if (API._high.length) job = API._high.shift();
+      else if (API._low.length && API._activeLow < API.MAX_LOW_CONCURRENT) { job = API._low.shift(); isLow = true; }
+      if (!job) return;
+      API._active++; if (isLow) API._activeLow++;
+      (function (j, low) {
+        Promise.resolve().then(j.task).then(j.resolve, j.reject).then(function () {
+          API._active--; if (low) API._activeLow--;
+          API.pump_();
+        });
+      })(job, isLow);
     }
   },
 
   get: function (action, params, opts) {
     opts = opts || {};
     const key = action + "|" + JSON.stringify(params || {});
-    if (API._inflight[key]) return API._inflight[key];      // identical call already running - share it
+    if (API._inflight[key]) return API._inflight[key];
     const low = !!opts.low || API.LOW_PRIORITY_ACTIONS.indexOf(action) !== -1;
+    const timeoutMs = action === "bootstrap" ? API.BOOTSTRAP_TIMEOUT_MS : API.GET_TIMEOUT_MS;
     const p = API.requestWithRetry_(function () {
       const qs = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
-      return API.fetchOnce_(CONFIG.apiUrl + "?" + qs.toString(), { method: "GET", cache: "no-store" });
+      return API.fetchOnce_(CONFIG.apiUrl + "?" + qs.toString(), { method: "GET", cache: "no-store" }, timeoutMs);
     }, { low: low, isPost: false, retries: opts.retries });
     API._inflight[key] = p;
     const clear = function () { delete API._inflight[key]; };
@@ -1270,27 +1301,27 @@ const API = {
   },
 
   post: function (action, payload) {
-    // One unique id per logical write, reused on every retry, so the
-    // backend can recognise a retry and never run the action twice.
     const reqId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
     const body = JSON.stringify(Object.assign({ action: action, token: STATE.token, reqId: reqId }, payload || {}));
     return API.requestWithRetry_(function () {
-      return API.fetchOnce_(CONFIG.apiUrl, { method: "POST", body: body });
+      return API.fetchOnce_(CONFIG.apiUrl, { method: "POST", body: body }, API.POST_TIMEOUT_MS);
     }, { low: false, isPost: true });
   },
 
-  fetchOnce_: function (url, options) {
+  fetchOnce_: function (url, options, timeoutMs) {
     const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, API.TIMEOUT_MS) : null;
+    let timedOut = false;
+    const timer = ctrl ? setTimeout(function () { timedOut = true; try { ctrl.abort(); } catch (e) {} }, timeoutMs || API.GET_TIMEOUT_MS) : null;
     const opts = Object.assign({}, options || {}, ctrl ? { signal: ctrl.signal } : {});
     return fetch(url, opts)
       .then(API.parseResponse)
       .catch(function (err) {
         if (err && err.code) throw err;
-        const e = new Error(err && err.name === "AbortError"
-          ? "The server took too long to respond."
+        const aborted = timedOut || (err && err.name === "AbortError");
+        const e = new Error(aborted
+          ? "The server is slow to respond - retrying..."
           : "Network problem - could not reach the server.");
-        e.code = (err && err.name === "AbortError") ? "TIMEOUT" : "NETWORK";
+        e.code = aborted ? "TIMEOUT" : "NETWORK";
         throw e;
       })
       .finally(function () { if (timer) clearTimeout(timer); });
@@ -1300,7 +1331,7 @@ const API = {
     if (!err) return false;
     const c = err.code;
     if (c === "BAD_RESPONSE" || c === "NETWORK" || c === "TIMEOUT" || c === "IN_PROGRESS") return true;
-    if (!isPost && c === "INTERNAL_ERROR") return true;     // reads are always safe to repeat
+    if (!isPost && c === "INTERNAL_ERROR") return true;
     return false;
   },
 
@@ -1312,7 +1343,7 @@ const API = {
         if (attempt < maxRetries && API.isTransient_(err, opts.isPost)) {
           attempt++;
           const delay = Math.min(API.MAX_DELAY_MS, API.BASE_DELAY_MS * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 400);
-          return API.sleep_(delay).then(run);              // wait with NO queue slot held
+          return API.sleep_(delay).then(API.waitUntilReady_).then(run);
         }
         throw err;
       });
@@ -1323,13 +1354,9 @@ const API = {
   parseResponse: function (r) {
     return r.text().then(function (text) {
       let json;
-      try {
-        json = JSON.parse(text);
-      } catch (e) {
-        const err = new Error(
-          "The server returned an unexpected response (it may be busy). Please try again in a moment. " +
-          "If this keeps happening, redeploy the Apps Script (Deploy \u2192 Manage deployments \u2192 Edit \u2192 New version)."
-        );
+      try { json = JSON.parse(text); }
+      catch (e) {
+        const err = new Error("The server returned an unexpected response (it may be busy). Please try again in a moment.");
         err.code = "BAD_RESPONSE";
         throw err;
       }
@@ -1346,6 +1373,47 @@ const API = {
     return json.data;
   },
 };
+
+/* Saves the last good bootstrap so the app opens instantly and
+   keeps working even if Apps Script is slow or down. */
+const SNAP = {
+  _db: null,
+  open_: function () {
+    if (SNAP._db) return Promise.resolve(SNAP._db);
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) return reject(new Error("no idb"));
+      const r = indexedDB.open("rtcms_snap", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("kv"); };
+      r.onsuccess = function () { SNAP._db = r.result; resolve(r.result); };
+      r.onerror = function () { reject(r.error); };
+    });
+  },
+  get: function () {
+    return SNAP.open_().then(function (db) {
+      return new Promise(function (resolve) {
+        const q = db.transaction("kv").objectStore("kv").get("bootstrap");
+        q.onsuccess = function () { resolve(q.result || null); };
+        q.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  },
+  set: function (data) {
+    return SNAP.open_().then(function (db) {
+      db.transaction("kv", "readwrite").objectStore("kv").put({ userId: STATE.userId, savedAt: Date.now(), data: data }, "bootstrap");
+    }).catch(function () {});
+  },
+  clear: function () {
+    return SNAP.open_().then(function (db) {
+      db.transaction("kv", "readwrite").objectStore("kv").delete("bootstrap");
+    }).catch(function () {});
+  },
+};
+
+/* Never let a background abort/timeout show up as an uncaught console error */
+window.addEventListener("unhandledrejection", function (e) {
+  const r = e && e.reason;
+  if (r && (r.name === "AbortError" || r.code === "TIMEOUT" || r.code === "NETWORK")) e.preventDefault();
+});
 
 /* ============================================================
    AUTH — single shared login (Executor / Verifier / Admin).
@@ -1383,6 +1451,7 @@ const AUTH = {
 
   logout: function () {
     SYNC.stop();
+    SNAP.clear();
     const token = STATE.token;
     STATE.token = null; STATE.role = null; STATE.userName = null; STATE.userId = null;
     STATE.isAuthed = false; STATE.compensation = {}; STATE.users = {};
@@ -1396,17 +1465,22 @@ const AUTH = {
    DATA LAYER
    ============================================================ */
 const DATA = {
+    applyBootstrap: function (data) {
+    STATE.blocks = data.blocks || {};
+    STATE.khatas = data.khatas || {};
+    STATE.documents = data.documents || {};
+    STATE.phases = data.phases || {};
+    STATE.phaseKhatas = data.phaseKhatas || {};
+    STATE.stats = data.stats || {};
+    SYNC.lastSeen = data.version || null;
+    SEARCH.rebuildIndex();
+  },
+
   loadBootstrap: function () {
     return API.get("bootstrap", { token: STATE.token }).then(function (data) {
-      STATE.blocks = data.blocks || {};
-      STATE.khatas = data.khatas || {};
-      STATE.documents = data.documents || {};
-      STATE.phases = data.phases || {};
-      STATE.phaseKhatas = data.phaseKhatas || {};
-      STATE.stats = data.stats || {};
-      SYNC.lastSeen = data.version || null;
+      DATA.applyBootstrap(data);
       STATE.loaded = true;
-      SEARCH.rebuildIndex();
+      SNAP.set(data);
     });
   },
 
@@ -1419,15 +1493,9 @@ const DATA = {
         if (DATA._refreshInFlight) { resolve(); return; }
         DATA._refreshInFlight = true;
         API.get("bootstrap", { token: STATE.token }).then(function (data) {
-          STATE.blocks = data.blocks || {};
-          STATE.khatas = data.khatas || {};
-          STATE.documents = data.documents || {};
-          STATE.phases = data.phases || {};
-          STATE.phaseKhatas = data.phaseKhatas || {};
-          STATE.stats = data.stats || {};
-          SYNC.lastSeen = data.version || SYNC.lastSeen;
+          DATA.applyBootstrap(data);
+          SNAP.set(data);
           SYNC.pending = false;
-          SEARCH.rebuildIndex();
           Router.render();
         }).catch(function () {}).finally(function () {
           DATA._refreshInFlight = false;
@@ -1769,14 +1837,8 @@ const SYNC = {
   refresh: function () {
     SYNC.refreshing = true;
     API.get("bootstrap", { token: STATE.token }).then(function (data) {
-      STATE.blocks = data.blocks || {};
-      STATE.khatas = data.khatas || {};
-      STATE.documents = data.documents || {};
-      STATE.phases = data.phases || {};
-      STATE.phaseKhatas = data.phaseKhatas || {};
-      STATE.stats = data.stats || {};
-      SYNC.lastSeen = data.version || SYNC.latest;
-      SEARCH.rebuildIndex();
+      DATA.applyBootstrap(data);
+      SNAP.set(data);
       return DATA.loadCompensationIfAllowed();
     }).then(function () {
       // If a khata's Documents list is open, re-fetch just that khata's list.
@@ -6024,19 +6086,46 @@ function boot2() {
   UI.applyRoleToChrome();
   Router.init();
 
-  DATA.loadBootstrap()
-    .then(function () { return DATA.loadCompensationIfAllowed(); })
-    .then(function () { Router.render(); SYNC.start(); })
-    .catch(function (err) {
-      console.error(err);
-      if (err.code === "UNAUTHORIZED") { Router.forceLogout(); return; }
-      showToast(err.message || "Could not reach the backend.", "error");
-      $("#pageRoot").innerHTML = emptyState("icon-triangle-alert", "Could not load data", err.message || "Check CONFIG.apiUrl and that the Apps Script is deployed.");
-    })
-    .finally(function () {
-      SPLASH.hide();
-      $("#app").classList.add("ready");
-    });
+  let shown = false;
+  const showApp = function () {
+    if (shown) return;
+    shown = true;
+    SPLASH.hide();
+    $("#app").classList.add("ready");
+  };
+
+  // 1) Open instantly from the saved snapshot (if any)
+  SNAP.get().then(function (snap) {
+    if (!snap || !snap.data || snap.userId !== STATE.userId) return false;
+    DATA.applyBootstrap(snap.data);
+    STATE.loaded = true;
+    Router.render();
+    showApp();
+    DATA.loadCompensationIfAllowed().then(function () { Router.render(); });
+    return true;
+  }).then(function (hadSnapshot) {
+    // 2) Fetch fresh data (with the new patient retry logic)
+    return DATA.loadBootstrap()
+      .then(function () { return DATA.loadCompensationIfAllowed(); })
+      .then(function () { Router.render(); SYNC.start(); })
+      .catch(function (err) {
+        console.error(err);
+        if (err && err.code === "UNAUTHORIZED") { Router.forceLogout(); return; }
+        if (hadSnapshot) {
+          SYNC.pending = true;   // auto-refresh as soon as the server answers
+          SYNC.start();
+          showToast("Showing saved data. Could not refresh yet - will retry automatically.", "error");
+          return;
+        }
+        $("#pageRoot").innerHTML = emptyState(
+          "icon-triangle-alert", "Server is taking too long",
+          "Google's server is slow right now. Your data is safe.",
+          '<button class="btn btn-primary btn-sm" id="btnRetryLoad"><i class="icon-refresh-cw i"></i>Try again</button>'
+        );
+        const b = $("#btnRetryLoad");
+        if (b) b.addEventListener("click", function () { location.reload(); });
+      });
+  }).finally(showApp);
 }
 
 document.addEventListener("DOMContentLoaded", boot);
