@@ -1709,6 +1709,7 @@ const DATA = {
     const groupKhatas = groupIds.map(function (id) { return STATE.khatas[id]; }).filter(Boolean);
     const groupBlocks = groupKhatas.map(function (k) { return STATE.blocks[k.blockId]; }).filter(Boolean);
     const blockNames = Array.from(new Set(groupBlocks.map(function (b) { return b.blockName; }).filter(Boolean)));
+    const villages = Array.from(new Set(groupKhatas.map(function (k) { return (k.location || {}).village; }).filter(Boolean)));
     const isCombined = groupIds.length > 1;
 
     const combinedAcquiredLandAcres = groupKhatas.reduce(function (sum, k) { return sum + (Number((k.land || {}).acquiredLandAcres) || 0); }, 0);
@@ -1742,7 +1743,7 @@ const DATA = {
     return {
       id: pk.id, phaseId: pk.phaseId, pk: pk,
       khata: khata, block: block,
-      isCombined: isCombined, groupIds: groupIds, blockNames: blockNames,
+      isCombined: isCombined, groupIds: groupIds, blockNames: blockNames, villages: villages,
       combinedAcquiredLandAcres: combinedAcquiredLandAcres, combinedCompensation: combinedCompensation,
       docsCollected: docsCollected, noticeServed: noticeServed,
       noticeTypesPresent: noticeTypesPresent, noticeServedByType: noticeServedByType,
@@ -2499,10 +2500,11 @@ PAGES.khataCardsHtml = function (khatas, opts) {
   if (!khatas.length) return emptyState("icon-file-search", "No Khata records found", opts.emptyMsg || "We couldn't find any Khata matching your search.");
   return '<div class="grid-cards mt-16">' + khatas.map(function (k) {
     const blockName = (STATE.blocks[k.blockId] || {}).blockName || "Unknown block";
+    const village = (k.location || {}).village || "";
     const land = k.land || {};
     const status = (k.metadata || {}).status || "On record";
     const statusClass = /blocked/i.test(status) ? "badge-rose" : /approved|processed|paid/i.test(status) ? "badge-green" : "badge-amber";
-    return '<div class="entity-card" data-nav="#/khata/' + k.id + '"><div class="eyebrow">KHATA ' + escapeHtml(k.khataNumber) + "</div><h3>" + escapeHtml(k.rtName || "Unnamed RT") + '</h3><div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(blockName) + '</span><span><i class="icon-ruler i"></i>' + fmtAcres(land.acquiredLandAcres) + '</span></div><div class="badge-row"><span class="badge ' + statusClass + '">' + escapeHtml(status) + "</span></div></div>";
+    return '<div class="entity-card" data-nav="#/khata/' + k.id + '"><div class="eyebrow">KHATA ' + escapeHtml(k.khataNumber) + "</div><h3>" + escapeHtml(k.rtName || "Unnamed RT") + '</h3><div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(blockName) + '</span><span><i class="icon-ruler i"></i>' + fmtAcres(land.acquiredLandAcres) + '</span></div><div class="badge-row">' + (village ? '<span class="badge" style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;"><i class="icon-map-pin i"></i>&nbsp;' + escapeHtml(village) + '</span>' : '') + '<span class="badge ' + statusClass + '">' + escapeHtml(status) + "</span></div></div>";
   }).join("") + "</div>";
 };
 
@@ -2787,6 +2789,7 @@ PAGES.pkCardHtml = function (v) {
 
   return '<div class="entity-card" data-pk-open="' + v.id + '"><div class="eyebrow">KHATA ' + escapeHtml(v.khata.khataNumber || "") + '</div><h3>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h3>' +
     '<div class="meta"><span><i class="icon-map i"></i>' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "&mdash;")) + '</span><span><i class="icon-ruler i"></i>' + fmtAcres(v.combinedAcquiredLandAcres) + '</span></div>' +
+    (v.villages && v.villages.length ? '<div class="badge-row mt-8"><span class="badge" style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;"><i class="icon-map-pin i"></i>&nbsp;' + escapeHtml(v.villages.join(" + ")) + '</span></div>' : '') +
     '<div class="stage-track mt-8">' + stepsHtml + '</div>' +
     (v.hasEscalation
       ? '<div class="badge-row mt-8"><span class="badge badge-rose"><i class="icon-triangle-alert i"></i>Escalated</span></div>'
@@ -2936,8 +2939,12 @@ const EnlistModal = {
 
   availableKhatas: function () {
     // A khata already enlisted in ANY phase (not just this one) must not appear here.
+    // Scoped by khataNumber + village: two different villages can coincidentally reuse
+    // the same khata number for two completely unrelated RTs, so grouping/hiding must
+    // never cross a village boundary, only a block boundary within the same village.
     const enlistedIds = {};
-    const enlistedNumbers = {};
+    const enlistedKeys = {};          // "khataNumber||village" (village-scoped)
+    const enlistedNumbersLegacy = {}; // bare khataNumber, for old entries with no khataId to resolve village from
     Object.keys(STATE.phaseKhatas).forEach(function (pkId) {
       const pk = STATE.phaseKhatas[pkId];
       const group = Array.isArray(pk.khataIds) && pk.khataIds.length ? pk.khataIds : [pk.khataId];
@@ -2945,22 +2952,27 @@ const EnlistModal = {
         enlistedIds[kid] = true;
         const kk = STATE.khatas[kid];
         const n = kk ? String(kk.khataNumber || "").trim() : "";
-        if (n) enlistedNumbers[n] = true;
+        const vil = kk ? String((kk.location || {}).village || "").trim() : "";
+        if (n) enlistedKeys[n + "||" + vil] = true;
       });
-      if (pk.khataNumber) enlistedNumbers[String(pk.khataNumber).trim()] = true;
+      if (pk.khataNumber) enlistedNumbersLegacy[String(pk.khataNumber).trim()] = true;
     });
 
-    const byNumber = {};
+    const byKey = {};
     DATA.khataList().forEach(function (k) {
       const num = String(k.khataNumber || "").trim();
       if (!num) return;
-      if (!byNumber[num]) byNumber[num] = [];
-      byNumber[num].push(k);
+      const vil = String((k.location || {}).village || "").trim();
+      const key = num + "||" + vil;
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push(k);
     });
     const groups = [];
-    Object.keys(byNumber).forEach(function (num) {
-      const members = byNumber[num];
-      if (enlistedNumbers[num]) return; // enlisted in some phase already
+    Object.keys(byKey).forEach(function (key) {
+      const members = byKey[key];
+      const num = members[0] ? String(members[0].khataNumber || "").trim() : "";
+      if (enlistedKeys[key]) return;           // enlisted in some phase already (same village)
+      if (enlistedNumbersLegacy[num]) return;  // legacy entry, no village info — be conservative
       if (members.some(function (k) { return enlistedIds[k.id]; })) return;
       const rep = Object.assign({}, members[0]);
       rep.groupBlockNames = Array.from(new Set(members.map(function (k) {
@@ -2993,11 +3005,14 @@ const EnlistModal = {
     }
     host.innerHTML = list.map(function (k) {
       const blockName = k.groupBlockNames && k.groupBlockNames.length ? k.groupBlockNames.join(" + ") : ((STATE.blocks[k.blockId] || {}).blockName || "");
+      const village = (k.location || {}).village || "";
       const checked = EnlistModal.selected[k.id] ? " checked" : "";
       return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;">' +
         '<input type="checkbox" data-ek-id="' + k.id + '"' + checked + ' style="width:17px;height:17px;flex-shrink:0;">' +
         '<span style="flex:1;"><span style="display:block;font-size:13.5px;font-weight:700;">' + escapeHtml(k.rtName || "Unnamed RT") + '</span>' +
-        '<span class="text-sm text-mute">Khata ' + escapeHtml(k.khataNumber) + ' &middot; ' + escapeHtml(blockName) + '</span></span>' +
+        '<span class="text-sm text-mute">Khata ' + escapeHtml(k.khataNumber) + ' &middot; ' + escapeHtml(blockName) +
+        (village ? ' &middot; <span style="color:#4338CA;font-weight:700;">' + escapeHtml(village) + '</span>' : '') +
+        '</span></span>' +
         '</label>';
     }).join("");
     $all("[data-ek-id]", host).forEach(function (cb) {
@@ -3222,7 +3237,7 @@ const PKModal = {
     let html = '<button class="btn btn-ghost btn-sm" id="btnClosePk" style="position:absolute;top:14px;right:14px;padding:6px 10px;font-size:12.5px;z-index:2;" title="Close" aria-label="Close">Close</button>' +
       '<div class="modal-icon" style="background:var(--brand-grad);"><i class="icon-file-text i"></i></div>' +
       '<h2>' + escapeHtml(v.khata.rtName || "Unnamed RT") + '</h2>' +
-      '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "")) + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
+      '<p class="modal-sub">Khata ' + escapeHtml(v.khata.khataNumber || "") + ' &middot; ' + escapeHtml(v.blockNames && v.blockNames.length ? v.blockNames.join(" + ") : (v.block.blockName || "")) + (v.villages && v.villages.length ? ' &middot; ' + escapeHtml(v.villages.join(" + ")) : '') + ' &middot; ' + escapeHtml(v.stageLabel) + '</p>' +
 
        PKModal.noticeSectionHtml(noticeList) +
 
