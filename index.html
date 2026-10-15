@@ -2608,7 +2608,7 @@ PAGES.phasesList = function () {
     '<div class="breadcrumbs"><a href="#/dashboard">Dashboard</a> <i class="icon-chevron-right i" style="font-size:13px;"></i> Phases</div>' +
     '<div class="page-head"><div><h1>Compensation Phases</h1><p>Track notice serving, document collection, verification and payment, phase by phase.</p></div>' +
     '<div class="flex gap-8" style="flex-wrap:wrap;">' +
-    (phases.length ? '<button class="btn btn-primary btn-sm" id="btnPhaseExcelReport" style="background:var(--money-grad);"><i class="icon-file-spreadsheet i"></i>Generate Report through Excel</button>' : '') +
+    (phases.length && CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnPhaseExcelReport" style="background:var(--money-grad);"><i class="icon-file-spreadsheet i"></i>Generate Report through Excel</button>' : '') +
     (CAN.fullControl() ? '<button class="btn btn-primary btn-sm" id="btnCreatePhase"><i class="icon-plus i"></i>Create phase</button>' : '') +
     '</div></div>' +
     (phases.length
@@ -4536,8 +4536,9 @@ const XLREPORT = {
   },
 
   /* ---------- entry point (button click) ---------- */
-  generate: function (btn) {
+    generate: function (btn) {
     if (typeof ExcelJS === "undefined") { showToast("Excel library failed to load. Check your connection and refresh the page.", "error"); return; }
+    if (!CAN.fullControl() && !CAN.isAdminOnly()) { showToast("Only a Verifier or Admin can download this report.", "error"); return; }
     const phases = DATA.phaseList();
     if (!phases.length) { showToast("There are no phases to report on yet.", "error"); return; }
 
@@ -4552,37 +4553,39 @@ const XLREPORT = {
     const who = (STATE.userName || STATE.userId || "User") + (STATE.role ? " (" + STATE.role + ")" : "");
     const showComp = CAN.canSeeCompensation();
 
-    setTimeout(function () {
-      let job;
-      try {
-        const wb = new ExcelJS.Workbook();
-        wb.creator = "RT Compensation Management System";
-        wb.created = now;
-        const used = {};
-        if (XLREPORT.INCLUDE_SUMMARY_SHEET) {
-          XLREPORT.addSummarySheet(wb, phases, XLREPORT.safeSheetName("All Phases Summary", used), dateStr, timeStr, showComp, who);
-        }
-        phases.forEach(function (p) {
-          XLREPORT.addPhaseSheet(wb, p, XLREPORT.safeSheetName(DATA.phaseDisplayName(p), used), dateStr, timeStr, showComp, who);
-        });
-        job = wb.xlsx.writeBuffer();
-      } catch (err) { job = Promise.reject(err); }
+    // Make sure compensation figures are loaded before building the workbook
+    const ensureComp = (showComp && !Object.keys(STATE.compensation).length)
+      ? DATA.loadCompensationIfAllowed()
+      : Promise.resolve();
 
-      job.then(function (buf) {
-        const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = "Phase_Wise_Report_As_Of_" + dateStr + ".xlsx";
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-        showToast("Excel report downloaded.", "success");
-      }).catch(function (err) {
-        console.error(err);
-        showToast("Could not generate the Excel report.", "error");
-      }).finally(function () {
-        btn.disabled = false; btn.innerHTML = original;
+    ensureComp.then(function () {
+      return new Promise(function (resolve) { setTimeout(resolve, 60); });
+    }).then(function () {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "RT Compensation Management System";
+      wb.created = now;
+      const used = {};
+      if (XLREPORT.INCLUDE_SUMMARY_SHEET) {
+        XLREPORT.addSummarySheet(wb, phases, XLREPORT.safeSheetName("All Phases Summary", used), dateStr, timeStr, showComp, who);
+      }
+      phases.forEach(function (p) {
+        XLREPORT.addPhaseSheet(wb, p, XLREPORT.safeSheetName(DATA.phaseDisplayName(p), used), dateStr, timeStr, showComp, who);
       });
-    }, 60);
+      return wb.xlsx.writeBuffer();
+    }).then(function (buf) {
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "Phase_Wise_Report_As_Of_" + dateStr + ".xlsx";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      showToast("Excel report downloaded.", "success");
+    }).catch(function (err) {
+      console.error(err);
+      showToast("Could not generate the Excel report.", "error");
+    }).finally(function () {
+      btn.disabled = false; btn.innerHTML = original;
+    });
   },
 };
 
