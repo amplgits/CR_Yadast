@@ -5643,11 +5643,12 @@ PAGES.afterAdminAnalytics = function () {
   const palette = ["#4338CA", "#2563EB", "#0891B2", "#7C3AED", "#D97706", "#059669", "#DB2777"];
 
   const phases = DATA.phaseList();
-  const phaseNames = phases.map(function (p) { return p.name; });
-  const noticeData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.noticeServed; }).length; });
-  const docsData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return PAGES.isDocComplete(pk.khataId); }).length; });
-  const verifiedData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.documentsVerified; }).length; });
-  const paidData = phases.map(function (p) { return DATA.phaseKhataList(p.id).filter(function (pk) { return pk.compensationReceived; }).length; });
+  const phaseNames = phases.map(function (p) { return DATA.phaseDisplayName(p); });
+  const phaseViews = phases.map(function (p) { return DATA.phaseKhataList(p.id).map(DATA.pkView); });
+  const noticeData = phaseViews.map(function (vs) { return vs.filter(function (v) { return v.noticeServed; }).length; });
+  const docsData = phaseViews.map(function (vs) { return vs.filter(function (v) { return v.docsCollected; }).length; });
+  const verifiedData = phaseViews.map(function (vs) { return vs.filter(function (v) { return v.documentsVerified; }).length; });
+  const paidData = phaseViews.map(function (vs) { return vs.filter(function (v) { return v.compensationReceived; }).length; });
 
   const ctxPP = $("#chartPhasePipeline");
   if (ctxPP && phases.length) {
