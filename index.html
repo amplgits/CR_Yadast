@@ -1488,20 +1488,25 @@ const DATA = {
 
   _refreshTimer: null,
   _refreshInFlight: false,
+  _refreshAgain: false,
   refreshQuietly: function () {
     clearTimeout(DATA._refreshTimer);
     return new Promise(function (resolve) {
       DATA._refreshTimer = setTimeout(function () {
-        if (DATA._refreshInFlight) { resolve(); return; }
+        // A refresh is already running: remember to run once more afterwards
+        if (DATA._refreshInFlight) { DATA._refreshAgain = true; resolve(); return; }
         DATA._refreshInFlight = true;
         API.get("bootstrap", { token: STATE.token }).then(function (data) {
           DATA.applyBootstrap(data);
           SNAP.set(data);
+          return DATA.loadCompensationIfAllowed(); // compensation now reloads too
+        }).then(function () {
           SYNC.pending = false;
           Router.render();
         }).catch(function () {}).finally(function () {
           DATA._refreshInFlight = false;
           resolve();
+          if (DATA._refreshAgain) { DATA._refreshAgain = false; DATA.refreshQuietly(); }
         });
       }, 2000);
     });
@@ -1798,13 +1803,19 @@ const SYNC = {
   refreshing: false,
   lastRefresh: 0,
 
-  start: function () {
+    start: function () {
     SYNC.stop();
     SYNC.timer = setInterval(SYNC.tick, SYNC.POLL_MS);
+    // Faster check, but ONLY while the Analytics page is open
+    SYNC.fastTimer = setInterval(function () {
+      const r = STATE.currentRoute;
+      if (r && r.name === "analytics") SYNC.tick();
+    }, 15000);
     document.addEventListener("visibilitychange", SYNC.onVisible);
   },
   stop: function () {
     clearInterval(SYNC.timer); SYNC.timer = null;
+    clearInterval(SYNC.fastTimer); SYNC.fastTimer = null;
     document.removeEventListener("visibilitychange", SYNC.onVisible);
     SYNC.lastSeen = null; SYNC.pending = false; SYNC.needRender = false;
   },
@@ -1812,6 +1823,9 @@ const SYNC = {
 
   isBusy: function () {
     if (document.querySelector(".modal-backdrop.open, #lightbox.open, #uploadSuccessOverlay.show")) return true;
+    // Analytics has no forms, so a focused topbar input must not block updates
+    const r = STATE.currentRoute;
+    if (r && r.name === "analytics") return false;
     const a = document.activeElement;
     return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
   },
@@ -1823,7 +1837,9 @@ const SYNC = {
     if (SYNC.needRender && !SYNC.isBusy()) { SYNC.needRender = false; SYNC.softRender(); }
 
     const maybeRefresh = function () {
-      if (SYNC.pending && !SYNC.isBusy() && Date.now() - SYNC.lastRefresh >= SYNC.MIN_GAP_MS) SYNC.refresh();
+      const r = STATE.currentRoute;
+      const gap = (r && r.name === "analytics") ? 5000 : SYNC.MIN_GAP_MS; // 5s on Analytics, 30s elsewhere
+      if (SYNC.pending && !SYNC.isBusy() && Date.now() - SYNC.lastRefresh >= gap) SYNC.refresh();
     };
 
     if (SYNC.pending) { maybeRefresh(); return; }
@@ -5711,6 +5727,7 @@ PAGES.afterAdminAnalytics = function () {
   } else if (ctx5) { ctx5.parentElement.innerHTML = emptyState("icon-pie-chart", "No data yet", "Documentation status will appear here once khatas are added."); }
 
   wireChartTilt();
+  SYNC.tick(); // each time Analytics opens, check for newer data right away
 };
 
 /* ============================================================
