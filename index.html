@@ -3221,6 +3221,10 @@ const PKModal = {
             noticeType: noticeType, fileName: file.name, mimeType: isImage ? "image/jpeg" : file.type,
             noticeDate: noticeDate, uploadedAt: Date.now(), uploadedBy: STATE.userId || "Public User",
           };
+          // NEW: untick this type's "Notice served" box straight away (the server does the same)
+          if (NOTICE_CHECKBOX_TYPES.indexOf(noticeType) !== -1 && pk.noticeServedByType && pk.noticeServedByType[noticeType]) {
+            pk.noticeServedByType[noticeType] = { served: false, servedAt: null, servedBy: null, remarks: null };
+          }
         }
         showToast(noticeType + " notice uploaded.", "success");
         if (PKModal.currentKhataId === target.khataId && PKModal.currentPhaseId === target.phaseId) {
